@@ -47,11 +47,11 @@ docs/
 │   ├── 00-synthesis-overview.md
 │   ├── 01-rtl-parsing-and-elaboration.md
 │   ├── 02-inference.md
-│   ├── 03-technology-mapping.md
-│   ├── 04-optimization.md
+│   ├── 04-technology-mapping.md
+│   ├── 03-optimization.md
 │   ├── 05-constraints-sdc.md
-│   ├── 06-timing-and-area-reports.md
-│   └── 07-low-power-synthesis.md
+│   ├── 07-synthesis-reports.md
+│   └── 08-low-power-synthesis.md
 │
 ├── 03-pnr/                            # 布局布线（待展开）
 │   ├── README.md
@@ -93,7 +93,7 @@ flowchart LR
 - [x] **01-rtl**：RTL 语法与可综合写法（第一版）
 - [x] 02-synthesis：01 RTL 解析与 Elaboration
 - [x] 02-synthesis：02 推断
-- [ ] 02-synthesis：03–07 章节
+- [ ] 02-synthesis：03–08 章节（骨架已建）
 - [ ] 03-pnr：原理章节
 - [ ] 示例与实验脚本
 

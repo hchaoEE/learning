@@ -1,30 +1,137 @@
 # 02 逻辑综合
 
-ASIC **逻辑综合** 原理与工程实践。工具以 **Design Compiler / Fusion Compiler**、**Genus** 为主。
+ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** 为主线，而非 Tcl 命令堆砌。
 
-## 章节导航
+工具参照：Design Compiler / Fusion Compiler、Cadence Genus、PrimeTime 签核。
+
+---
+
+## 1. 章节设计的核心原则
+
+| 原则 | 说明 |
+|------|------|
+| **一条主链** | 按 **数据形态变化** 组织：RTL → AST → GTECH → 推断标签 → AIG → 门级网表 |
+| **编号 = 主链顺序** | 文件序号与 **推荐学习顺序** 一致（03 优化在 04 映射 **之前**） |
+| **机制优先** | 每章写「内部在做什么」；命令/报告放在节末 **附录级** 对照 |
+| **案例内嵌** | 输入/输出案例写在 **对应知识点小节末**，不集中堆在章末 |
+| **约束双读** | SDC 是 compile 的 **输入**，第 05 章可 **早读一遍**、映射后再读一遍 |
+
+---
+
+## 2. 内部 IR 与章节映射
+
+```text
+  RTL 源文件
+      │  01 预处理/解析/Elaboration/Lowering
+      ▼
+  GTECH + Design DB（含 SEQGEN / MULT / RAM 壳）
+      │  02 推断：资源类型、端口语义、实现策略
+      ▼
+  带标签 GTECH + 组合逻辑准备布尔化
+      │  03 优化：AIG、技术无关 rewrite/balance
+      ▼
+  AIG / 布尔网表
+      │  04 工艺映射：cut/cover、.lib 单元
+      ▼
+  门级网表（mapped）
+      │  06 时序驱动优化（常与 compile 迭代）
+      ▼
+  满足 SDC 的网表 ──► 07 报告 / 交付
+      ▲
+      └── 05 SDC 全程约束输入
+```
+
+| IR / 产物 | 主要章节 |
+|-----------|----------|
+| AST、logical library | 01 |
+| GTECH、SEQGEN | 01、02 |
+| `resource_type`（REG/LATCH/RAM/MULT） | 02 |
+| **AIG** | **03**（主）、04（映射用 AIG） |
+| 标准单元实例 | 04、06 |
+| 时序弧、违例 | 05、06、07 |
+
+---
+
+## 3. 章节导航
 
 | 序号 | 文档 | 状态 | 内容 |
 |------|------|------|------|
-| 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | 综合三阶段、输入输出 |
-| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端内部 + 各节内嵌 **输入/输出案例**（见 [01 章](./01-rtl-parsing-and-elaboration.md)） |
-| 2 | [02-inference.md](./02-inference.md) | **已写** | 推断引擎、寄存器/Latch/RAM/乘除/ICG + I/O 案例 |
-| 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 骨架 | 工艺映射；**AIG→单元（cut/cover）** |
-| 4 | [04-optimization.md](./04-optimization.md) | 骨架 | **AIG 主章节**；技术无关布尔优化 |
-| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | 待写 | SDC 约束 |
-| 6 | [06-timing-and-area-reports.md](./06-timing-and-area-reports.md) | 待写 | 读懂报告 |
-| 7 | [07-low-power-synthesis.md](./07-low-power-synthesis.md) | 待写 | 低功耗综合 |
+| 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | IR 全景、compile 里程碑、阅读地图 |
+| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端：Analyze / Elaborate / Lowering → GTECH |
+| 2 | [02-inference.md](./02-inference.md) | **已写** | 寄存器 / Latch / RAM / 乘除 / ICG 推断 |
+| 3 | [03-optimization.md](./03-optimization.md) | 骨架 | **AIG 主章**；技术无关布尔优化 |
+| 4 | [04-technology-mapping.md](./04-technology-mapping.md) | 骨架 | .lib、AIG/网表 → 标准单元 |
+| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | 骨架 | SDC、时钟、IO、例外路径 |
+| 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | 骨架 | 映射后 WLM/拓扑、迭代收敛 |
+| 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | 骨架 | 面积/时序/约束/资源报告 |
+| 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | 骨架 | UPF、ICG、多电压 |
 
-## 阅读顺序
+---
+
+## 4. 阅读路径
+
+### 路径 A — 按综合主链（默认）
 
 ```text
-00 总览 → 01 RTL 解析与展开 → 02 推断 → 03 映射 → 04 优化 → 05 SDC → 06 报告
+00 → 01 → 02 → 03 → 04 → 06 → 07
+              ↑    ↑
+              05 SDC（建议 04 前通读约束；06 前精读时序例外）
 ```
 
-## 与 01-rtl 的衔接
+### 路径 B — 先建立约束观（有 STA 基础）
 
-RTL 中的 `always` 风格、parameter/generate、端口位宽，直接决定 **elaboration 是否通过** 以及 **推断结果**。建议先完成 [01-rtl](../01-rtl/) 再读本章。
+```text
+00 → 05（SDC 基础）→ 01 → 02 → 03 → 04 → 06 → 07
+```
 
-## 示例
+### 路径 C — 只查专题
 
-- [examples/elab_walkthrough/](./examples/elab_walkthrough/) — 与 01/02 章案例对照
+| 专题 | 章节 |
+|------|------|
+| Elaboration / GTECH | 01 |
+| Latch / RAM 从哪来 | 02 |
+| AIG 在哪、做什么 | 00 §3、[03](./03-optimization.md) |
+| 为何先优化再映射 | 本 README §2 |
+| 综合报告怎么读 | 07 |
+
+---
+
+## 5. `compile` 里程碑（与章节对照）
+
+| 里程碑 | 内部发生的事 | 章节 |
+|--------|----------------|------|
+| `elaborate` | GTECH 网表、层次展开 | 01 |
+| `compile` 早期 | 推断、资源绑定 | 02 |
+| `compile` 中期 | 组合 → AIG、布尔优化 | 03 |
+| `compile` 中后期 | 工艺映射 | 04 |
+| `compile` 迭代 | 用 SDC 修 setup/hold | 05、06 |
+| 结束 | 网表 + 报告 | 07 |
+
+---
+
+## 6. 示例代码
+
+| 目录 | 对应章节 |
+|------|----------|
+| [examples/elab_walkthrough/](./examples/elab_walkthrough/) | 01 |
+| [examples/inference_walkthrough/](./examples/inference_walkthrough/) | 02 |
+
+---
+
+## 7. 与相邻模块衔接
+
+| 模块 | 关系 |
+|------|------|
+| [01-rtl](../01-rtl/) | 综合 **输入**；决定 elaboration / 推断 |
+| [03-pnr](../03-pnr/) | 综合 **输出** 门级网表 → PnR |
+| [05-practice](../05-practice/) | Checklist、实验（待扩充） |
+
+---
+
+## 8. 历史调整说明
+
+- **03 / 04 对调**：早期目录将「映射」标为 03、「优化」标为 04，与 **先布尔优化、后工艺映射** 的实际 pass 顺序相反，已修正。
+- **AIG**：主文放在 **03**；04 只写基于 AIG 的 mapping。
+- **新增 06**：映射后的 **时序驱动优化** 与 03 技术无关优化区分。
+
+详细设计 rationale 见 [DESIGN.md](./DESIGN.md)。

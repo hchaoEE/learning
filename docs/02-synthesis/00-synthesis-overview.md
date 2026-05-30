@@ -1,104 +1,75 @@
 # 2.0 逻辑综合总览
 
-ASIC **逻辑综合** 将 RTL 转换为满足 **时序、面积、功耗** 约束的 **门级网表**（标准单元 + 宏）。
+ASIC **逻辑综合**：RTL → **门级网表**（标准单元 + 宏），在满足 **SDC** 的前提下优化时序、面积、功耗。
 
-本系列强调 **综合器内部机制**（前端 IR、elaboration、GTECH、映射与优化 pass），Tcl 命令仅作阶段对照。
+> 章节怎么排、AIG 写在哪一章，见 **[02-synthesis/README.md](./README.md)** 与 **[DESIGN.md](./DESIGN.md)**。
 
-## 1. 三阶段模型
+---
 
-```text
-┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-│ RTL 解析与展开   │ → │ 推断 + 工艺映射  │ → │ 优化 + 约束驱动  │
-│ Design DB+GTECH │   │ (.lib 绑定)     │   │ (STA 闭环)      │
-└─────────────────┘   └─────────────────┘   └─────────────────┘
-        ↑                       ↑                       ↑
-   第 01 章（内部）        第 02–03 章（待写）      第 04–06 章（待写）
-```
-
-| 阶段 | 文档 | 状态 |
-|------|------|------|
-| RTL 解析、Elaboration、Lowering | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写（深入内部）** |
-| 推断 | [02-inference.md](./02-inference.md) | **已写** |
-| 工艺映射 | [03-technology-mapping.md](./03-technology-mapping.md) | 待写 |
-| 优化 | [04-optimization.md](./04-optimization.md) | 待写 |
-| SDC | [05-constraints-sdc.md](./05-constraints-sdc.md) | 待写 |
-| 报告 | [06-timing-and-area-reports.md](./06-timing-and-area-reports.md) | 待写 |
-| 低功耗 | [07-low-power-synthesis.md](./07-low-power-synthesis.md) | 待写 |
-
-## 2. 主要输入与输出
-
-| 类型 | 文件/对象 |
-|------|-----------|
-| 输入 | RTL、filelist、SDC、.lib（+ DB）、UPF（可选） |
-| 输出 | 门级 Verilog、SDF（可选）、检查点、综合报告 |
-
-## 4. AIG 在哪一步做？
-
-**结论**：**AIG（And-Inverter Graph，与或非图）不在 RTL 解析 / Elaboration 阶段**；出现在 **compile 中段至工艺映射前后** 的 **逻辑优化（技术无关优化）** 里，是 GTECH/布尔逻辑 lowering 之后、或与之并行的一种 **布尔层 IR**。
-
-### 4.1 内部 IR 链条（概念）
+## 1. 一张图看懂全篇
 
 ```text
-RTL ──elab/lowering──► GTECH（含 MUX/加法/寄存器/与或非）
-                              │
-                              ▼ 布尔化 / 展平（部分工具）
-                         布尔网络 / AIG
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-        技术无关优化      技术映射         时序/面积优化
-     (AIG rewrite…)    (cover on AIG)    (mapped 门级)
-              │               │
-              └───────┬───────┘
-                      ▼
-                 标准单元门级网表
+                    ┌─────────────────────────────────────────┐
+  RTL + filelist    │  01 前端：Elaboration → GTECH          │
+ ─────────────────►│  02 推断：REG / LATCH / RAM / MULT      │
+                    │  03 优化：AIG、技术无关化简              │
+                    │  04 映射：.lib 标准单元                  │
+                    │  06 时序驱动优化（mapped）               │
+                    └─────────────────────────────────────────┘
+                                        │
+                    05 SDC ─────────────┘（全程约束输入）
+                                        ▼
+                              门级网表 + 07 报告
+                    08 低功耗（UPF/ICG，与 02/06 交叉）
 ```
 
-| 阶段 | 常见 IR | 是否 AIG |
-|------|---------|----------|
-| Analyze / Elaborate | AST、Design DB | 否 |
-| RTL lowering | GTECH、RTL 结构网表 | 否（含高层次算子） |
-| 布尔优化 / 映射准备 | **AIG**、BDD、二元覆盖图 | **是** |
-| 工艺映射后 | 门级实例 + .lib 延时 | 否（已绑定单元） |
+---
 
-### 4.2 AIG 上典型在做什么
+## 2. 章节与状态
 
-- **结构共享（structural hashing）**：相同子图合并，减节点数。  
-- **重写（rewriting）**：用更小 AIG 替换局部（如 ABC 的 `rewrite` / `refactor`）。  
-- **平衡（balancing）**：控制逻辑深度，利于时序。  
-- **技术映射输入**：在 AIG 上做 **cut enumeration**，选 cover 映射到 NAND/NOR/AND 门或标准单元。
+| 章 | 文档 | 状态 | 一句话 |
+|----|------|------|--------|
+| 0 | 本文 | 已写 | 地图 |
+| 1 | [01-rtl-parsing-and-elaboration](./01-rtl-parsing-and-elaboration.md) | **已写** | RTL → GTECH |
+| 2 | [02-inference](./02-inference.md) | **已写** | GTECH → 资源标签 |
+| 3 | [03-optimization](./03-optimization.md) | 骨架 | 组合 → **AIG** → 优化 |
+| 4 | [04-technology-mapping](./04-technology-mapping.md) | 骨架 | AIG/网表 → 单元 |
+| 5 | [05-constraints-sdc](./05-constraints-sdc.md) | 骨架 | SDC 约束语言 |
+| 6 | [06-timing-driven-optimization](./06-timing-driven-optimization.md) | 骨架 | 映射后修时序 |
+| 7 | [07-synthesis-reports](./07-synthesis-reports.md) | 骨架 | 读报告 |
+| 8 | [08-low-power-synthesis](./08-low-power-synthesis.md) | 骨架 | UPF/ICG |
 
-寄存器、MUX、加法器通常 **先** 在 GTECH 层保留边界；组合逻辑云 **再** 转为 AIG 做布尔优化，时序元件在映射后仍对应 `.lib` 中的 DFF/ latch。
+---
 
-### 4.3 和本章（01 Elaboration）的边界
+## 3. AIG 在哪一章？（短答）
 
-| 你看到的 | 阶段 |
-|----------|------|
-| `GTECH_FD1`、`GTECH_MUX`、`GTECH_MULT` | Elaboration / compile 早期 |
-| 工具内部「节点数骤降、结构合并」报告 | 多为 **AIG 优化 pass** |
-| 网表里出现 `ND2D1`、`INVX1` 等库单元名 | **映射之后**，已离开 AIG |
+| 问题 | 答案 |
+|------|------|
+| 在 Elaboration 里吗？ | **否**（01 止于 GTECH） |
+| 主文写哪？ | **[03 优化](./03-optimization.md)** |
+| 映射怎么用 AIG？ | **[04 工艺映射](./04-technology-mapping.md)** 的 cut/cover |
+| 长流程图 | 见 [README §2 IR 映射](./README.md#2-内部-ir-与章节映射) |
 
-### 4.4 工具差异（了解即可）
+不在 00 章展开算法细节，避免与 03 重复。
 
-- **开源典型路径**：Yosys 读 RTL → 内部 RTLIL → 导出/调用 **ABC** → **AIG** 优化 + `if -K` 映射。  
-- **商业 DC / Genus**：对外仍以 GTECH/门级网表为主；内部布尔优化可能为 **专有图 + 部分 ABC 类算法**，不一定对用户暴露 “AIG” 文件名，但 **语义上等价阶段** 存在于 `compile` / `opt` 之中。
+---
 
-详细算法见 **[04 优化](./04-optimization.md)**（AIG 主章节）；**[03 工艺映射](./03-technology-mapping.md)** 写 AIG→标准单元。
-### 4.5 文档章节归属（写到哪里）
+## 4. 交付物
 
-| 主题 | 章节 | 说明 |
-|------|------|------|
-| AIG **不**在何时出现 | [00 §4](./00-synthesis-overview.md#4-aig-在哪一步做) / [01](./01-rtl-parsing-and-elaboration.md) | 仅流程定位 |
-| AIG **数据结构与优化 pass** | **[04 优化](./04-optimization.md)** | **主章节** |
-| AIG **技术映射（cut/cover）** | [03 工艺映射](./03-technology-mapping.md) | 与 .lib 绑定 |
-| 推断、GTECH 边界 | [02 推断](./02-inference.md) | 组合云 **进入** AIG 之前 |
+| 类型 | 说明 |
+|------|------|
+| 输入 | RTL、filelist、**SDC**、.lib（+ DB）、UPF（可选） |
+| 输出 | 门级 Verilog、SDF（可选）、DDC/NDM、综合报告 |
 
+---
 
+## 5. 工具链（ASIC）
 
-## 3. 工具链（ASIC）
+Synopsys DC/Fusion、Cadence Genus + PrimeTime；内部 pass 不同，**IR 主链一致**（GTECH → AIG → mapped）。
 
-Synopsys DC/Fusion、Cadence Genus 等架构类似：**前端共享 elaboration + GTECH 思想**，后端映射/优化各有实现。
+---
 
 ## 下一节
 
-[01 RTL 解析与 Elaboration（综合器内部）](./01-rtl-parsing-and-elaboration.md)
+- 主链起点：[01 RTL 解析与 Elaboration](./01-rtl-parsing-and-elaboration.md)
+- 章节设计：[README](./README.md) · [DESIGN](./DESIGN.md)
