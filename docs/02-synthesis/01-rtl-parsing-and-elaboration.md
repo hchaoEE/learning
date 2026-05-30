@@ -485,7 +485,489 @@ Genus：`read_hdl` ≈ analyze；`elaborate` 同上。
 
 ---
 
-## 17. 小结
+
+## 17. 各阶段输入/输出案例（贯穿示例）
+
+本节用 **同一套小设计** 与 **若干微例子**，给出每个内部阶段的 **输入 → 输出** 长什么样。示意网表/AST 为 **概念化缩写**（真实工具内部格式为二进制 DB，此处用文本便于学习）。
+
+**贯穿 RTL 源码**（仓库路径）：
+
+- `examples/elab_walkthrough/child.sv` — 参数化子模块  
+- `examples/elab_walkthrough/top.sv` — `generate` + `always_comb` + `always_ff` 子层次  
+
+以下假定：
+
+```tcl
+analyze -format sverilog {child.sv top.sv}
+elaborate top -parameters "N=2,W=8"
+```
+
+---
+
+### 17.1 总表：阶段 ↔ 输入 ↔ 输出
+
+| 阶段 | 输入（概念） | 输出（概念） |
+|------|----------------|----------------|
+| A 预处理 | 带宏的源文本 | 单份「干净」字符流 |
+| B 词法 | 字符流 | Token 序列 |
+| C 语法 | Token 流 | 模块级 AST（进 logical library） |
+| D 语义 | AST + 符号表 | 带类型的符号表 / 语义错误 |
+| E Elaboration | 顶层 + 参数覆盖 | 实例树 + 连接后的 Net/Pin |
+| F Lowering | always/assign | GTECH 单元 + Net 连接 |
+| G GTECH 视图 | 结构网表 | 统一原语命名的 IR |
+| Link | 含 cell-ref 的设计 | ref 全部解析的 Design DB |
+| Uniquify | 多组 parameter 的同一 module | 多个 uniquified ref |
+| Check | Design DB | 错误/警告报告 |
+
+---
+
+### 17.2 阶段 A：预处理（Preprocess）
+
+**微例子输入**（`preprocess_demo.sv`）：
+
+```systemverilog
+`ifdef SYNTHESIS
+    assign active_path = in_a & in_b;
+`else
+    initial $display("sim only");
+`endif
+```
+
+**输出**（`+define+SYNTHESIS` 时，**未选中分支被删除**）：
+
+```systemverilog
+    assign active_path = in_a & in_b;
+```
+
+| 项 | 本例中 |
+|----|--------|
+| 输入 | 2 个分支的源文件 + define 表 |
+| 输出 | 仅 **SYNTHESIS** 分支文本；`initial` **不存在于** 后续 parse |
+| 若未定义 `SYNTHESIS` | 输出仅 `initial` 行 → 综合 analyze 可能 **报错**（不可综合） |
+
+---
+
+### 17.3 阶段 B：词法分析（Lexical）
+
+**输入**（一行 RTL）：
+
+```systemverilog
+assign sum = data_in + 8'h01;
+```
+
+**输出**（Token 序列，类型缩写）：
+
+```text
+TK_ASSIGN  TK_ID(sum)  TK_EQ
+TK_ID(data_in)  TK_PLUS  TK_NUM(8'h01)  TK_SEMI
+```
+
+| 项 | 说明 |
+|----|------|
+| 输入 | 预处理后的字符 |
+| 输出 | 带 **源位置** 的 token 链表，供 parser 消费 |
+| 错误例 | `assign sum = ;` → `TK_SEMI` 前缺表达式 → **语法错误** |
+
+---
+
+### 17.4 阶段 C：语法分析（Parse / Analyze）
+
+**输入**（`child.sv` 片段）：
+
+```systemverilog
+module child #(parameter int W = 8) (
+    input  logic [W-1:0] din,
+    output logic [W-1:0] dout
+);
+    always_ff @(posedge clk) dout <= din;
+endmodule
+```
+
+**输出**（AST 示意，树形文本）：
+
+```text
+ModuleDecl: child
+├── ParamDecl: W = 8 (int)
+├── PortDecl: input  clk
+├── PortDecl: input  din[W-1:0]   // W 为形式参数，位宽表达式挂节点
+├── PortDecl: output dout[W-1:0]
+└── AlwaysFF
+    ├── Sens: posedge clk
+    └── Stmt: NBA  dout <= din
+```
+
+**Logical library 状态**（Analyze 后）：
+
+```text
+worklib.child  →  AST(child)     // 未展开，无 Cell
+worklib.top    →  AST(top)
+```
+
+| 项 | 本例 |
+|----|------|
+| 输入 | `child.sv`, `top.sv` |
+| 输出 | 库中 **2 个 module 模板**，**无** `top/g_slice[0]` 实例 |
+| 命令 | `analyze` 结束于此 |
+
+---
+
+### 17.5 阶段 D：模块级语义（Semantic, pre-elab）
+
+**案例 1：位宽错误（输入）**
+
+```systemverilog
+logic [7:0] a;
+logic [3:0] b;
+assign a = b;   // 无显式扩展
+```
+
+**输出**：
+
+```text
+Warning/Error (工具相关): width mismatch, extending/truncating
+Symbol: a → net[7:0], b → net[3:0]
+```
+
+**案例 2：多驱动登记（输入）**
+
+```systemverilog
+assign x = a;
+assign x = b;
+```
+
+**输出**：
+
+```text
+Semantic/Elab error: net 'x' driven by multiple structural sources
+```
+
+| 阶段输入 | 阶段输出 |
+|----------|----------|
+| AST + 表达式类型规则 | 符号表条目、位宽属性、**错误列表**（仍可能没有 Cell） |
+
+---
+
+### 17.6 阶段 E：Elaboration
+
+**输入**：
+
+- 顶层名：`top`  
+- 参数覆盖：`N=2`, `W=8`  
+- 库中模板：`child`, `top`  
+
+**输出 1：Parameter 求值**
+
+```text
+top.N = 2
+top.W = 8
+child.W = 8   (例化 #(.W(W)) 传递)
+```
+
+**输出 2：Generate 展开（实例树）**
+
+```text
+Design: top
+└── cell: top (ref top, params N=2 W=8)
+    ├── pin clk      → net top/clk
+    ├── pin data_in  → bus top/data_in[7:0]
+    ├── pin data_out → bus top/data_out[7:0]
+    ├── net  sum[7:0]
+    ├── cell: g_slice[0].u_child  (ref child, W=8)
+    │     ├── .clk  → top/clk
+    │     ├── .din  → top/data_in
+    │     └── .dout → top/sum        ← 多驱动风险见 17.10
+    └── cell: g_slice[1].u_child  (ref child, W=8)
+          └── (同上，两个 child 的 dout 都接到 sum)
+```
+
+**输出 3：Port 连接（单例化微例子）**
+
+输入 RTL：
+
+```systemverilog
+child #(.W(8)) u (.din(a), .dout(y));
+```
+
+内部连接表：
+
+```text
+Cell u.ref = child(W=8)
+Pin u.din  → Net a[7:0]
+Pin u.dout → Net y[7:0]
+```
+
+| 输入 | 输出 |
+|------|------|
+| `elaborate top -parameters "N=2,W=8"` | **Design DB**：完整层次 + 已落地位宽 + generate 实例 |
+
+---
+
+### 17.7 阶段 F：Lowering — `assign`（组合）
+
+**输入 RTL**：
+
+```systemverilog
+assign y = (a & b) | c;
+```
+
+**输出 GTECH 连接（示意）**：
+
+```text
+Net a ──┐
+        ├── GTECH_AND ── Net t1 ──┐
+Net b ──┘                          ├── GTECH_OR ── Net y
+Net c ─────────────────────────────┘
+```
+
+| 输入 | 输出 |
+|------|------|
+| 连续赋值表达式树 | 无状态 **GTECH_AND / GTECH_OR** + 中间 net `t1` |
+
+---
+
+### 17.8 阶段 F：Lowering — `always_comb`（含 latch）
+
+**输入**（`top.sv` 中）：
+
+```systemverilog
+always_comb begin
+    if (en)
+        data_out = sum;
+end
+```
+
+**输出（概念网表）**：
+
+```text
+// 缺 else → 推断电平敏感锁存器
+GTECH_LAT (或 MUX+反馈) latch_data_out
+  .D0(sum)      .S0(en)     // en=1 时透传 sum
+  .D1(data_out) .S0(!en)    // en=0 时保持原值 → 反馈
+Net data_out  driven by latch_data_out
+```
+
+| 输入 | 输出 |
+|------|------|
+| 不完整分支的 `always_comb` | **GTECH_LAT** 或等价反馈 MUX + **Lint: Inferred latch** |
+
+**对照：完整赋值输入**
+
+```systemverilog
+always_comb begin
+    if (en) data_out = sum;
+    else    data_out = '0;
+end
+```
+
+**输出**：仅 **GTECH_MUX2** + 常数 0，**无** LATCH。
+
+---
+
+### 17.9 阶段 F：Lowering — `always_ff`（时序）
+
+**输入**（`child.sv`）：
+
+```systemverilog
+always_ff @(posedge clk) begin
+    dout <= din;
+end
+```
+
+**输出 GTECH（SEQGEN 抽象）**：
+
+```text
+Cell: g_slice[0].u_child/U_DOUT_REG  (GTECH_SEQGEN 或 GTECH_FD1)
+  .CK (clk)
+  .D  (din[7:0] bus bit-slice 或整 bus)
+  .Q  (dout[7:0])
+  // 无异步复位 → .CLR 未接或 tie 无效
+```
+
+| 输入 | 输出 |
+|------|------|
+| `always_ff` + posedge clk | 每位或整 bus 一个 **寄存器原语**；敏感列表无时钟沿 → 可能 **报错/推断为 latch** |
+
+**带异步复位输入/输出对照**：
+
+```systemverilog
+// 输入
+always_ff @(posedge clk or negedge rst_n)
+  if (!rst_n) q <= '0;
+  else        q <= d;
+```
+
+```text
+// 输出 SEQGEN 引脚
+.CK(clk), .CLR_N(rst_n), .D(d), .Q(q)
+```
+
+---
+
+### 17.10 阶段 F 后：GTECH 网表片段（`child` 单实例）
+
+**输入**：`elaborate` 后的 `child`，`W=8`。
+
+**输出**（`write -format verilog` 阶段早期可能类似，**名称因工具而异**）：
+
+```verilog
+module child_W8 ( clk, din, dout );
+  input  clk;
+  input  [7:0] din;
+  output [7:0] dout;
+  GTECH_FD1 U_dout_0_ ( .CK(clk), .D(din[0]), .Q(dout[0]) );
+  // ... 共 8 个 FD 或 1 个 bus-FF 模型
+endmodule
+```
+
+| 输入 | 输出 |
+|------|------|
+| RTL `always_ff` | **仅** 通用寄存器/运算节点，**尚无** `DFFRX1` |
+
+---
+
+### 17.11 阶段：Link
+
+**输入（Link 前）**：
+
+```text
+Cell u_child  ref → ???   // 子模块未 analyze 或库名错误
+```
+
+**输出（Link 后）**：
+
+```text
+Cell g_slice[0].u_child  ref → worklib.child(W=8)
+  所有 pin 已连接到 parent net
+```
+
+**失败案例输出**：
+
+```text
+Error: Unable to link cell 'u_child': reference 'child' not found
+```
+
+---
+
+### 17.12 阶段：Uniquify
+
+**输入 RTL**：
+
+```systemverilog
+child #(.W(8))  u8  (...);
+child #(.W(16)) u16 (...);
+```
+
+**输出（logical / design 库中）**：
+
+```text
+worklib.child_W8   ← 仅含 8 位 din/dout 的网表
+worklib.child_W16  ← 16 位版本
+```
+
+| 输入 | 输出 |
+|------|------|
+| 同一 module 不同 parameter | **两个** uniquified ref，不可共用一张网表 |
+
+---
+
+### 17.13 阶段：Check_design
+
+**案例 A：多驱动（`top.sv` 中 N=2 个 child 均驱动 `sum`）**
+
+**输入 DB 状态**：`g_slice[0].u_child/dout` 与 `g_slice[1].u_child/dout` 均连到 `sum[7:0]`。
+
+**输出报告**：
+
+```text
+Error (MULTIPLE_DRIVERS): Net 'sum[3]' is driven by
+  g_slice[0].u_child/U_reg/Q and g_slice[1].u_child/U_reg/Q
+```
+
+**案例 B：组合环**
+
+```systemverilog
+assign a = b & c;
+assign b = a | d;
+```
+
+**输出**：
+
+```text
+Error (COMBINATIONAL_LOOP): Loop detected: net a → net b → net a
+```
+
+**案例 C：浮空输入**
+
+```systemverilog
+child u (.clk(clk), .din(), .dout(y));  // din 未连接
+```
+
+**输出**：
+
+```text
+Warning: Input pin 'u.din' is unconnected
+```
+
+---
+
+### 17.14 命令级：一次 Elaborate 的输入/输出文件
+
+| 动作 | 典型输入 | 典型输出（磁盘） |
+|------|----------|------------------|
+| `analyze -f filelist.f` | `.sv`、`` `include ``、`+define+` | 逻辑库（`.db` / NDM 库内） |
+| `elaborate top` | 顶层名、`-parameters` | 内存 **Design DB**；可选 `top.elab.ddc` |
+| `write -format verilog` | Design DB | `top_elab.v`（GTECH 或混合 RTL） |
+| `report_hierarchy` | Design DB | `top.rpt` 文本层次树 |
+
+**`report_hierarchy` 输出片段示例**（`N=2`）：
+
+```text
+top
+  g_slice[0].u_child    (child)
+  g_slice[1].u_child    (child)
+```
+
+---
+
+### 17.15 端到端：同一行 RTL 经过各阶段的变化
+
+以 `child` 中 `dout <= din` 为例：
+
+| 阶段 | 你看到的「数据」 |
+|------|----------------|
+| 源文件 | 文本 `dout <= din;` |
+| 预处理后 | 同左（无宏时） |
+| AST | `AlwaysFF` + `NBA(dout, din)` |
+| Elaboration | `Cell U_reg` 待创建，pin `D`→`din` bus，`Q`→`dout` bus |
+| Lowering | `GTECH_FD1×8` 或 bus-FF |
+| Mapping 后（下章） | `DFFRX1×8`（.lib 单元名） |
+
+---
+
+### 17.16 如何自己导出对照
+
+```tcl
+# 1) 仅 elaboration 检查点
+remove_design -all
+analyze -format sverilog -f $env(WALKTHROUGH_F)
+elaborate top -parameters "N=2,W=8"
+report_hierarchy -full > hier.rpt
+check_design > check.rpt
+
+# 2) 导出 GTECH 级网表（工具/版本选项名可能为 generic）
+write -format verilog -hierarchy -output top_elab_gtech.v
+
+# 3) 与 RTL 对比
+#    RTL:      examples/elab_walkthrough/top.sv
+#    网表:     top_elab_gtech.v
+#    层次报告: hier.rpt
+```
+
+将 `WALKTHROUGH_F` 指向仅含 `child.sv;top.sv` 的 filelist。
+
+---
+
+## 18. 小结
 
 | 你要记住的内部概念 |
 |--------------------|
