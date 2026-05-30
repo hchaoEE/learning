@@ -163,7 +163,18 @@ RAM: mem  1024x32  1R1W  -> register array
 
 ---
 
+## 10. 与 LEC 的关系
+
+| 报告 | LEC |
+|------|-----|
+| QoR 满足 | **不保证** 等价 |
+| 无 latch 意外 | 仍可能 **LEC fail**（复位/常数） |
+
+**签核**：`report_timing` clean 后必须跑 [09 LEC](./09-logical-equivalence-checking.md)。
+
 ## 下一节
 
+- [09 LEC](./09-logical-equivalence-checking.md)
+- [12 交付](./12-deliverables-and-handoff.md)
 - [08 低功耗](./08-low-power-synthesis.md)
 - [05 SDC](./05-constraints-sdc.md)
