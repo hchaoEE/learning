@@ -83,7 +83,17 @@ RTL ──elab/lowering──► GTECH（含 MUX/加法/寄存器/与或非）
 - **开源典型路径**：Yosys 读 RTL → 内部 RTLIL → 导出/调用 **ABC** → **AIG** 优化 + `if -K` 映射。  
 - **商业 DC / Genus**：对外仍以 GTECH/门级网表为主；内部布尔优化可能为 **专有图 + 部分 ABC 类算法**，不一定对用户暴露 “AIG” 文件名，但 **语义上等价阶段** 存在于 `compile` / `opt` 之中。
 
-详细算法见后续 [04-optimization.md](./04-optimization.md)（待写）。
+详细算法见 **[04 优化](./04-optimization.md)**（AIG 主章节）；**[03 工艺映射](./03-technology-mapping.md)** 写 AIG→标准单元。
+### 4.5 文档章节归属（写到哪里）
+
+| 主题 | 章节 | 说明 |
+|------|------|------|
+| AIG **不**在何时出现 | [00 §4](./00-synthesis-overview.md#4-aig-在哪一步做) / [01](./01-rtl-parsing-and-elaboration.md) | 仅流程定位 |
+| AIG **数据结构与优化 pass** | **[04 优化](./04-optimization.md)** | **主章节** |
+| AIG **技术映射（cut/cover）** | [03 工艺映射](./03-technology-mapping.md) | 与 .lib 绑定 |
+| 推断、GTECH 边界 | [02 推断](./02-inference.md) | 组合云 **进入** AIG 之前 |
+
+
 
 ## 3. 工具链（ASIC）
 

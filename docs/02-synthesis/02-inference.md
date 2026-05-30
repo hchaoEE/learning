@@ -26,7 +26,7 @@ GTECH 网表（elab / compile 早期）
   工艺映射（绑定 .lib 单元或 DesignWare / 宏）
         │
         ▼
-  AIG / 布尔优化（组合部分，见 00 章 §4）
+  AIG / 布尔优化（组合部分，见 [04 优化](./04-optimization.md)）
 ```
 
 | 阶段 | 输入 | 输出 |

@@ -9,8 +9,8 @@ ASIC **逻辑综合** 原理与工程实践。工具以 **Design Compiler / Fusi
 | 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | 综合三阶段、输入输出 |
 | 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端内部 + 各节内嵌 **输入/输出案例**（见 [01 章](./01-rtl-parsing-and-elaboration.md)） |
 | 2 | [02-inference.md](./02-inference.md) | **已写** | 推断引擎、寄存器/Latch/RAM/乘除/ICG + I/O 案例 |
-| 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 待写 | 工艺映射 |
-| 4 | [04-optimization.md](./04-optimization.md) | 待写 | 面积/延时/功耗优化 |
+| 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 骨架 | 工艺映射；**AIG→单元（cut/cover）** |
+| 4 | [04-optimization.md](./04-optimization.md) | 骨架 | **AIG 主章节**；技术无关布尔优化 |
 | 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | 待写 | SDC 约束 |
 | 6 | [06-timing-and-area-reports.md](./06-timing-and-area-reports.md) | 待写 | 读懂报告 |
 | 7 | [07-low-power-synthesis.md](./07-low-power-synthesis.md) | 待写 | 低功耗综合 |
