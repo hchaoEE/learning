@@ -69,6 +69,17 @@ Synopsys DC/Fusion、Cadence Genus + PrimeTime；内部 pass 不同，**IR 主�
 
 ---
 
+
+## 6. 粗 / 细粒度优化写在哪？
+
+| 粒度 | 章节 |
+|------|------|
+| **粗**（技术无关、AIG） | [03](./03-optimization.md) |
+| **细**（mapped + SDC） | [06](./06-timing-driven-optimization.md) |
+| 资源级「粗选」 | [02](./02-inference.md) |
+
+详见 [README §9](./README.md#9-粗粒度优化-vs-细粒度优化写在哪一章)。
+
 ## 下一节
 
 - 主链起点：[01 RTL 解析与 Elaboration](./01-rtl-parsing-and-elaboration.md)
