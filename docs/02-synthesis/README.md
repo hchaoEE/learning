@@ -1,6 +1,6 @@
 # 02 逻辑综合
 
-> **状态：待编写** — 骨架已预留，完成 01-rtl 后展开。
+> **状态：待编写** — 骨架已预留，完成 01-rtl 后展开。叙述以 **Synopsys Design Compiler / Fusion Compiler** 或 **Cadence Genus** 为代表的 ASIC 综合流程为准。
 
 ## 计划章节
 

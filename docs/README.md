@@ -1,6 +1,8 @@
 # 逻辑综合与物理设计学习文档
 
-面向数字 IC / FPGA 工程师的系统化自学路径：从 **可综合 RTL** 出发，经 **逻辑综合** 到 **布局布线（PnR）**，并串联 EDA 工具链与工程实践。
+面向 **ASIC 数字 IC 设计** 的系统化自学路径：从 **可综合 RTL** 出发，经 **逻辑综合** 到 **布局布线（PnR）**，到 **签核（Signoff）**，并串联 Synopsys / Cadence 等主流 EDA 流程。
+
+> **设计范围**：本文档以 **标准单元 ASIC 流片流程** 为准（RTL → 综合 → PnR → GDSII → STA/DRC/LVS 签核）。**不包含 FPGA**（无比特流、无 CLB/BRAM 推断、无 Vivado 等工具链）。
 
 ## 如何使用本文档
 
@@ -76,7 +78,7 @@ flowchart LR
   RTL["01 RTL 设计"] --> SYN["02 逻辑综合"]
   SYN --> NET["门级网表"]
   NET --> PNR["03 布局布线"]
-  PNR --> GDS["版图 / 比特流"]
+  PNR --> GDS["GDSII 版图"]
   SDC["SDC 约束"] --> SYN
   SDC --> PNR
   LIB["工艺库 .lib"] --> SYN
@@ -93,6 +95,8 @@ flowchart LR
 
 ## 参考与约定
 
-- HDL 以 **Verilog-2001 / SystemVerilog 可综合子集** 为主；必要时提及 VHDL。
-- 代码块默认 **可综合**；标注 `// simulation only` 的为仅仿真构造。
+- **流程**：Design Compiler / Fusion Compiler（综合）→ Innovus / ICC2（PnR）→ PrimeTime（STA）等为叙述参照；不同 Foundry 的 .lib / LEF / MCMM 细节以项目为准。
+- **HDL**：Verilog-2001 / SystemVerilog **可综合子集**；必要时提及 VHDL。
+- 代码块默认 **可综合**；`initial`、`$display` 等仅用于仿真或 Testbench。
 - 位宽、时钟域、复位策略在 RTL 阶段即应明确，避免留给综合/PnR “猜”。
+- **存储器**：ASIC 中大块 SRAM 通常例化 **Memory Compiler / 硬宏**；RTL 推断的 RAM 需与工艺 RAM 单元或寄存器堆模板一致。

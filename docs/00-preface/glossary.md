@@ -1,11 +1,17 @@
 # 术语表
 
+> 本文档术语均围绕 **ASIC 标准单元设计**，不涉及 FPGA 资源类型。
+
 | 术语 | 英文 | 简要说明 |
 |------|------|----------|
 | RTL | Register Transfer Level | 用 HDL 描述寄存器之间的数据传送与运算 |
-| 可综合 | Synthesizable | 能被综合工具映射到库单元的 RTL 构造 |
-| 综合 | Logic Synthesis | 将 RTL 映射为门级网表并优化 |
-| 工艺库 | Technology Library (.lib) | 单元延时、面积、功耗等特性 |
+| 可综合 | Synthesizable | 能被综合工具映射到 **标准单元库** 的 RTL 构造 |
+| 综合 | Logic Synthesis | 将 RTL 映射为 **门级网表**（.v/.ddc）并优化 |
+| 工艺库 | Technology Library (.lib) | 标准单元延时、面积、功耗；含 wire load / CCS 等模型 |
+| 标准单元 | Standard Cell | 来自 Foundry 的预制逻辑单元（AND、DFF、MUX 等） |
+| 硬宏 / 软宏 | Hard / Soft Macro | SRAM、PLL、IO 等；硬宏带 GDS，软宏为布局布线块 |
+| 网表 | Netlist | 综合或 PnR 后的门级/晶体管级连接描述 |
+| GDSII | GDSII Stream | 交付 Foundry 的版图数据格式 |
 | 约束 | Constraints (SDC) | 时钟、IO 延时、例外路径等时序要求 |
 | STA | Static Timing Analysis | 静态时序分析，不跑向量 |
 | PnR | Place and Route | 布局布线 |

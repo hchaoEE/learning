@@ -11,5 +11,5 @@
 ## 使用建议
 
 1. 用仿真器（Verilator / VCS / Xcelium 等）做功能验证。
-2. 用综合工具（Design Compiler / Yosys / Vivado synthesis 等）查看推断网表与报告。
+2. 用 **Design Compiler** 或 **Genus** 等综合工具查看推断网表、面积与约束报告（需配齐 .lib / SDC）。
 3. 对比修改 `if` 分支不完整时的 **latch 推断** 警告。

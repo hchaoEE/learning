@@ -11,7 +11,7 @@ always @(posedge clk or negedge rst_n) begin
 end
 ```
 
-综合工具会映射为库中的 **DFF**（或 FPGA 的 FDRE 等原语）。
+综合工具会映射为工艺库中的 **D 触发器单元**（如 `DFFRX1` 等，名称因 Foundry 而异），其 **setup/hold、recovery/removal** 由 .lib 描述并在 STA 中检查。
 
 ## 2. 异步复位 vs 同步复位
 

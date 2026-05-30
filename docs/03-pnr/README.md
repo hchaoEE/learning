@@ -1,6 +1,6 @@
 # 03 布局布线（Place & Route）
 
-> **状态：待编写**
+> **状态：待编写** — 以 **Cadence Innovus** / **Synopsys ICC2** 等标准单元后端流程为准。
 
 ## 计划章节
 

@@ -61,14 +61,14 @@ adder #(.WIDTH(16)) u_add (
 - **按名连接**（`.port(sig)`）优于按序连接，便于维护。
 - 实例名 `u_add` 建议带功能前缀（`u_` / `gen_` 等），便于网表与波形定位。
 
-## 4. 顶层与 IO 约束的衔接
+## 4. 顶层与 IO 约束的衔接（ASIC）
 
-综合与 PnR 需要将 RTL 端口绑定到芯片/FPGA 管脚：
+综合与 PnR 需要将 RTL 端口与 **芯片 PAD / IO 单元** 及签核约束对齐：
 
-- ASIC：顶层端口 ↔ **SDC** 中的 `create_clock`、`set_input_delay` 等。
-- FPGA：顶层端口 ↔ 工具中的 **pin location / IO standard** 约束。
+- **SDC**：`create_clock`、`set_input_delay` / `set_output_delay`、`set_drive` 等，描述芯片边界时序。
+- **物理**：IO 单元来自工艺 **IO library**；pin 顺序、电源域、ESD 规则在 floorplan 阶段确定，RTL 端口名需与 **DEF / pad frame** 约定一致。
 
-RTL 阶段应保证：**时钟、复位、关键数据端口命名稳定**，避免后期改端口名导致约束失效。
+RTL 阶段应保证：**时钟、复位、关键数据端口命名稳定**，避免后期改端口名导致 SDC、形式验证与后端网表不一致。
 
 ## 5. 小结
 
