@@ -7,7 +7,7 @@ ASIC **逻辑综合** 原理与工程实践。工具以 **Design Compiler / Fusi
 | 序号 | 文档 | 状态 | 内容 |
 |------|------|------|------|
 | 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | 综合三阶段、输入输出 |
-| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端内部 + [§17 各阶段 I/O 案例](./01-rtl-parsing-and-elaboration.md#17-各阶段输入输出案例贯穿示例) |
+| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端内部 + 各节内嵌 **输入/输出案例**（见 [01 章](./01-rtl-parsing-and-elaboration.md)） |
 | 2 | [02-inference.md](./02-inference.md) | 待写 | 寄存器、latch、RAM、乘法器推断 |
 | 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 待写 | 工艺映射 |
 | 4 | [04-optimization.md](./04-optimization.md) | 待写 | 面积/延时/功耗优化 |
