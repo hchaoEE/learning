@@ -1,0 +1,450 @@
+# 2.2 推断（Inference）：从 GTECH 到「该用什么硬件」
+
+Elaboration / lowering 之后，网表里已有 **GTECH_FD*、GTECH_MUX、GTECH_MULT、GTECH_RAM** 等抽象节点，但工具尚未决定：这是 **工艺库里的哪种 DFF**、要不要 **SRAM 宏**、乘法器用 **硬宏还是门级阵列**、组合缺口是否 **Latch**。
+
+**推断** 就是综合器在 **映射（mapping）之前或与之交织** 的阶段，对网表做 **模式识别 + 绑定策略**，把「行为等价的 GTECH 子图」归类为 **寄存器 / 锁存器 / 存储器 / 算术块 / 三态** 等 **架构级资源**，并附上 **时序弧、功耗、面积模型** 的来源（.lib 或 .lib + 宏 LEFr）。
+
+> **范围**：ASIC；推断结果决定 **mapping 的候选单元集合**。本章不讲 SDC 如何修时序，讲 **内部认出了什么结构**。
+
+**示例 RTL**：`examples/inference_walkthrough/`（与下文案例对应）。
+
+---
+
+## 1. 在综合流程中的位置
+
+```text
+GTECH 网表（elab / compile 早期）
+        │
+        ▼
+┌───────────────────────────────────────┐
+│  INFERENCE（本章）                     │
+│  寄存器 / Latch / RAM / 乘除 / 三态   │
+│  识别 + 约束检查 + 宏/单元策略         │
+└───────────────────────────────────────┘
+        │
+        ▼
+  工艺映射（绑定 .lib 单元或 DesignWare / 宏）
+        │
+        ▼
+  AIG / 布尔优化（组合部分，见 00 章 §4）
+```
+
+| 阶段 | 输入 | 输出 |
+|------|------|------|
+| Lowering（01 章） | RTL | `GTECH_SEQGEN`、`GTECH_LAT`、`GTECH_RAM` 等 **候选** |
+| **推断（本章）** | GTECH + 属性 + 工艺策略 | **带资源类型标签** 的网表 + 推断报告 |
+| Mapping（03 章） | 标签 + .lib | `DFFRX1`、`ram256x32`、`DW02_mult` 等 |
+
+**与 Elaboration 的边界**：Elaboration 已可能标 `LATCH_INFER`；**推断** 做 **二次确认**、与工艺 **latch 单元是否允许**、**RAM 模板是否匹配** 联动。
+
+---
+
+## 2. 推断引擎在做什么（内部模型）
+
+综合器维护一张 **模式库（inference rule set）**，对 Design DB 做 **子图同构 / 特征匹配**：
+
+```text
+遍历 cell / netlist
+  对每个 GTECH_SEQGEN → 匹配 clock/reset/enable 拓扑 → 标 REGISTER
+  对每个 GTECH_LAT   → 检查 enable 方程 → 标 LATCH（或强制改 MUX）
+  对每个 GTECH_RAM   → 读/写端口时序 → 标 RAM_1R1W / 2P / ROM ...
+  对每个 GTECH_MULT  → 位宽 + 流水线寄存 → 标 MULTIPLIER_IMPL
+  对三态驱动        → 标 TRI_ENABLE
+```
+
+| 机制 | 说明 |
+|------|------|
+| **结构模式** | 如「MUX 反馈到自身 + 使能」→ latch |
+| **过程语义回溯** | 保留 RTL 属性 `rtl_always_style` 等（工具私有） |
+| **用户约束** | `set_register_type`、`compile_register_for_memory`、`dont_use` |
+| **工艺策略** | .lib 无 latch 单元 → 报错或自动改逻辑 |
+
+推断 **一般不改变功能**，但可能 **插入硬件**（如读端口寄存器、时钟门控 ICG）——属 **推断 + 实现选择**，需在报告中可见。
+
+### 输入/输出案例
+
+**输入**（GTECH 片段）：
+
+```text
+GTECH_SEQGEN U1: .CK(clk) .D(d) .Q(q)
+```
+
+**输出**（推断后内部标签）：
+
+```text
+Cell U1: resource_type=REGISTER
+         ff_style=DFF
+         async_reset=none
+         clock_enable=none
+         mapped_candidate_cells={DFFX1, DFFRX1, ...}
+```
+
+| 输入 | 输出 |
+|------|------|
+| 未标注的 GTECH 原语 | 带 **resource_type** 与 **mapping 候选** 的 cell 属性 |
+
+---
+
+## 3. 寄存器（Flip-Flop）推断
+
+### 3.1 识别来源
+
+| 来源 | 内部路径 |
+|------|----------|
+| `always_ff` / 时序 `always` | Lowering → `GTECH_SEQGEN` / `GTECH_FD*` |
+| 显式实例化 | `DFF` 仿真模型 → 直接映射（少见于 RTL） |
+
+推断器读取 **SEQGEN 引脚拓扑**：
+
+| 引脚模式 | 推断结果 |
+|----------|----------|
+| 仅 `.CK` + `.D` + `.Q` | 基本 DFF |
+| `.CLR` / `.PRE` 异步有效 | 异步复位/置位 DFF |
+| `.EN` 或 `.E` | 带 clock enable |
+| `.SCD` / scan 相关 | 扫描链 DFF（DFT 流程） |
+
+### 3.2 异步复位、使能、扫描
+
+```systemverilog
+always_ff @(posedge clk or negedge rst_n)
+  if (!rst_n) q <= '0;
+  else if (en) q <= d;
+```
+
+**推断输出**（概念）：
+
+```text
+REGISTER: async_reset=active_low, reset_pin=rst_n
+          clock_enable=en, enable_polarity=active_high
+```
+
+**.lib 绑定**：只选带 **recovery/removal** 弧的 `DFFRX*`；STA 用 **异步复位路径** 单独约束。
+
+### 3.3 多比特与总线
+
+- **逐位推断** 或 **bus-FF 原语**：工具依位宽、扇出、功耗选 **bit-blast DFF** 或 **集成 bus 寄存器**。  
+- **移位寄存器链**：若识别 SISO 链，可能合并为 **SRL**（部分 FPGA 流程；ASIC 多为 DFF 链）。
+
+### 输入/输出案例
+
+**输入**（`inference_walkthrough/reg_en.sv`）：
+
+```systemverilog
+always_ff @(posedge clk) begin
+    if (en) cnt <= cnt + 1'b1;
+end
+```
+
+**输出**（`report_cell` / 推断报告片段）：
+
+```text
+Inferred register: cnt[7:0] (8 bits)
+  Clock: clk
+  Clock enable: en (integrated in cell CE pin)
+  Cell candidates: DFFEQX*
+```
+
+| 输入 | 输出 |
+|------|------|
+| GTECH 带 EN 的 SEQGEN | 带 **CE pin** 的寄存器单元类，而非门控时钟 |
+
+---
+
+## 4. 锁存器（Latch）推断
+
+### 4.1 何时产生
+
+| RTL / GTECH 特征 | 推断 |
+|------------------|------|
+| `always_comb` 不完整 `if`/`case` | `GTECH_LAT` 或 MUX-feedback |
+| 显式 `always_latch` | 直接 LATCH |
+| 组合环 + 使能保持 | 可能报错而非 latch |
+
+### 4.2 内部结构（组合缺口 → 电平敏感）
+
+```systemverilog
+always_comb
+  if (en) q = d;
+```
+
+**GTECH / 推断示意**：
+
+```text
+en ──► GTECH_MUX2 ──► q
+       ▲            │
+       └── q (feedback) when !en
+→ resource_type=LATCH, transparent_level=high|low
+```
+
+### 4.3 ASIC 策略
+
+| 工艺库 | 推断行为 |
+|--------|----------|
+| 提供 `LH*` / `TLAT*` | 映射为 latch 单元；STA **time borrowing** |
+| **禁止 latch**（常见高性能数字块） | `set_latch_logic none` 或报错，要求 RTL 改 MUX+FF |
+| 误推断 latch | `set_compile_directives` / 改 RTL 补 `else` |
+
+### 输入/输出案例
+
+**输入**（`inference_walkthrough/latch_infer.sv`）：
+
+```systemverilog
+always_comb begin
+    if (hold) data_hold = bus_in;
+end
+```
+
+**输出**：
+
+```text
+Warning: Inferred latch on signal data_hold[7:0]
+  Enable: hold
+  Avoid: use register if target library has no latch
+```
+
+| 输入 | 输出 |
+|------|------|
+| 不完整分支组合逻辑 | **LATCH** 标签 + 映射到 latch 单元或 **Error** |
+
+---
+
+## 5. 存储器（RAM / ROM）推断
+
+### 5.1 从 RTL 到 GTECH_RAM
+
+推断器不读「变量名」，而读 **端口图（port schedule）**：
+
+| 行为 | 典型 GTECH 端口 |
+|------|-----------------|
+| 同步写 | `CLK`, `WA`, `DI`, `WE` |
+| 同步读 | `CLK`, `RA`, `DO` |
+| 异步读（组合读） | `RA` → `DO` 同周期组合路径 |
+
+```systemverilog
+logic [7:0] mem [0:255];
+always_ff @(posedge clk) begin
+    if (we) mem[wa] <= di;
+    rdo <= mem[ra];
+end
+```
+
+Lowering 后 → **1R1W RAM** 模板；推断判断 **读写是否同址同周期**（写优先 / 读旧 / 读新）。
+
+### 5.2 推断分类（内部枚举）
+
+| 类型 | 含义 | ASIC 常见去向 |
+|------|------|----------------|
+| `RAM_1P` | 单端口读写互斥 | SRAM 宏或 latch-array |
+| `RAM_1R1W` | 独立读写口 | 双口 SRAM / register file |
+| `RAM_2P` | 真双口 | 双口宏 |
+| `ROM` | 只读、常数表 | ROM 宏或逻辑锥 |
+| `REGISTER_ARRAY` | 深度小、位宽小 | 触发器阵列（非宏） |
+
+### 5.3 与 Memory Compiler / 宏
+
+| 步骤 | 输入 | 输出 |
+|------|------|------|
+| 推断 | GTECH_RAM 深度/宽度/端口 | `ram_block` 属性 |
+| 策略 | `set_memory_implementation`、宏 .lib/.lef | 绑定 **硬宏** 或 **寄存器** |
+| 失败 | 异步读 + 无匹配宏 | 拆成寄存器 + 组合读（面积大） |
+
+### 输入/输出案例
+
+**输入**（`inference_walkthrough/sync_ram.sv`）：
+
+```systemverilog
+logic [31:0] ram [0:1023];
+always_ff @(posedge clk) begin
+    if (we) ram[addr] <= wdata;
+    if (re) rdata <= ram[addr];
+end
+```
+
+**输出**（推断报告）：
+
+```text
+Inferred memory: ram
+  Words: 1024  Width: 32
+  Type: 1R1W synchronous (write-first on collision)
+  Implementation: register_array | sram_macro (per strategy)
+```
+
+| 输入 | 输出 |
+|------|------|
+| 同步读写 always 块 | **深度×宽度** + **端口类型** + **碰撞语义** |
+
+---
+
+## 6. 乘法器 / 除法器 / 移位器推断
+
+### 6.1 识别
+
+| RTL | GTECH | 推断标签 |
+|-----|-------|----------|
+| `assign p = a * b` | `GTECH_MULT` | `MULTIPLIER` |
+| `assign q = a / b` | `GTECH_DIV` | `DIVIDER`（常数除 → 移位树） |
+| `assign s = a << 3` | shifter / rewiring | `CONST_SHIFTER` |
+
+### 6.2 实现选择（推断 + mapping 交界）
+
+| 策略 | 条件 | 结果 |
+|------|------|------|
+| DesignWare / 厂商 IP | 宽位、高性能 | `DW02_mult` 等 |
+| 门级阵列 | 小位宽、面积优先 | AND-CSA 树映射到标准单元 |
+| 流水线 | 多级 REG 包围 MULT | 推断 **pipeline_depth**，影响时序 |
+
+### 输入/输出案例
+
+**输入**（`inference_walkthrough/mult_16x16.sv`）：
+
+```systemverilog
+assign prod = a * b;   // a,b 为 16 位
+```
+
+**输出**：
+
+```text
+Inferred multiplier: 16x16 -> 32 bits
+  Implementation: DesignWare_mult | generic_wallace
+  Estimated area: (from .lib or IP model)
+```
+
+| 输入 | 输出 |
+|------|------|
+| `GTECH_MULT` + 位宽 | **乘法器实现类** + 可选 IP 绑定 |
+
+---
+
+## 7. 三态与总线保持
+
+| RTL | 推断 |
+|-----|------|
+| `assign pad = oe ? dout : 1'bz` | `TRI_STATE` → 映射 IO 单元 / 三态缓冲 |
+| `inout` 端口 | 双向 pin + tristate enable |
+
+ASIC **内核逻辑** 通常 **禁止三态**；三态多在 **PAD / 宏 IP** 边界。推断器对内核报 **Error** 或强制拆分方向。
+
+### 输入/输出案例
+
+**输入**：内核 `assign bus = en ? data : 'z;`
+
+**输出**：`Error: Tristate not allowed in core logic` 或映射专用 `TBUF`（若库允许）。
+
+---
+
+## 8. 时钟门控（ICG）推断 — ASIC 低功耗
+
+与 RTL 手写 `clk & en` 不同，**综合推断 ICG** 在 **register bank 前** 插 **时钟门控单元**（需 .lib 含 `CKLNQD` 等）：
+
+```text
+识别：大量 DFF 共享 enable 且 enable 与 clock 同步
+  → 插入 integrated clock-gating cell
+  → 原 GTECH_SEQGEN 的 clock pin 改接 ICG 输出
+```
+
+| 输入 | 输出 |
+|------|------|
+| `compile_clock_gating` 策略 + enable 拓扑 | **ICG cell** + 门控网络；UPF/CPF 协同 |
+
+（与 [07-low-power-synthesis.md](./07-low-power-synthesis.md) 交叉，待写。）
+
+---
+
+## 9. 推断与 Mapping 的交接
+
+```text
+推断结果 (cell attributes)
+    ├── REGISTER  → map_to .lib DFF 族
+    ├── LATCH     → map_to latch 或 transform
+    ├── RAM       → map_to macro / registers
+    ├── MULT      → map_to DW / gates
+    └── COMB      → 进入 AIG 优化 + 标准单元映射
+```
+
+**`dont_touch` / `size_only`**：在推断后、映射前挂在 cell 上，阻止推断 **拆分** 或 **合并** 该宏。
+
+### 输入/输出案例
+
+**输入**：
+
+```tcl
+set_dont_touch [get_cells u_sram_macro]
+```
+
+**输出**：推断仍标 `RAM`，mapping **不拆解** 为寄存器阵列。
+
+---
+
+## 10. 报告与调试
+
+| 命令（DC 示例） | 看到的推断信息 |
+|-----------------|----------------|
+| `report_inference` / `report_memory` | RAM 深度、类型、实现 |
+| `report_latch` | 锁存器列表与 enable |
+| `report_registers` | 寄存器数量、位宽、时钟 |
+| `report_reference -hierarchy` | 是否出现 `**latch**`、`**mult**` |
+
+**案例 — 报告片段**（`sync_ram` 综合后）：
+
+```text
+Memory          Depth    Width    Ports    Implementation
+ram             1024     32       1R1W     register array
+```
+
+### 输入/输出案例
+
+| 输入 | 输出 |
+|------|------|
+| `compile` 后的 Design DB | `report_*` 文本 / 属性可查询的推断结果 |
+
+---
+
+## 11. RTL 写法 → 推断结果对照表
+
+| RTL 模式 | 推断结果 | 风险 |
+|----------|----------|------|
+| `always_ff` + `<=` | DFF（+CE/AR） | 混用阻塞赋值 |
+| `always_comb` 缺 else | Latch | 工艺无 latch |
+| 同步单端口 RAM 模板 | 1R1W / 1P RAM | 异步读 → 拆寄存器 |
+| `a * b` 大位宽 | 乘法器 IP/阵列 | 面积/延时 |
+| 多驱动 `sum` | **非推断**，check 报错 | — |
+
+---
+
+## 12. 贯穿示例：对 walkthrough 设计做推断
+
+对 [01 章](../02-synthesis/01-rtl-parsing-and-elaboration.md) 的 `top`（`N=2`）在 **修复多驱动后** 推断预期：
+
+| 模块/信号 | 推断 |
+|-----------|------|
+| `child.dout` | 8× REGISTER |
+| `top.data_out`（补全 else 后） | 组合 MUX，无 latch |
+| `top.sum` | 若仍双驱动 | **推断前** check 失败 |
+
+```tcl
+elaborate top -parameters "N=1,W=8"   ;# 先减为单 child 避免多驱动
+compile -stage :pre_map
+report_registers
+report_latch
+report_memory
+```
+
+---
+
+## 13. 小结
+
+| 概念 | 要点 |
+|------|------|
+| **时机** | GTECH 之后、映射/AIG 之前（与 compile 交织） |
+| **本质** | 对 GTECH 子图 **分类 + 打标签 + 选实现策略** |
+| **寄存器** | SEQGEN 引脚 → DFF 族 |
+| **Latch** | 组合缺口 / GTECH_LAT → 工艺是否允许 |
+| **RAM** | 端口图 + 深度宽度 → 宏或寄存器阵 |
+| **乘法器** | GTECH_MULT → IP 或门级 |
+
+---
+
+## 下一节
+
+- [03 工艺映射](./03-technology-mapping.md)（待写：.lib 绑定、cover、单元选择）
+- 回顾：[01 RTL 解析与 Elaboration](./01-rtl-parsing-and-elaboration.md)

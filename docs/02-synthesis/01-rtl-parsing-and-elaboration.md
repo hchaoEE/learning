@@ -851,5 +851,5 @@ Genus：`read_hdl` ≈ analyze；`elaborate` 同上。
 
 ## 下一节
 
-- [02 推断：寄存器、锁存器、RAM、乘法器](./02-inference.md)（待写：在 GTECH 之上如何识别与绑定工艺单元）
+- [02 推断：寄存器、锁存器、RAM、乘法器](./02-inference.md)
 - [00 逻辑综合总览](./00-synthesis-overview.md)

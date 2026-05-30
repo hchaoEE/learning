@@ -92,7 +92,8 @@ flowchart LR
 - [x] 文档骨架与目录规划
 - [x] **01-rtl**：RTL 语法与可综合写法（第一版）
 - [x] 02-synthesis：01 RTL 解析与 Elaboration
-- [ ] 02-synthesis：其余章节
+- [x] 02-synthesis：02 推断
+- [ ] 02-synthesis：03–07 章节
 - [ ] 03-pnr：原理章节
 - [ ] 示例与实验脚本
 
