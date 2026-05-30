@@ -39,7 +39,9 @@
 - **Logical library**：存 **未展开** 的 module 模板（parameter 形式参数仍在）。  
 - **Design / Working design**：存 **某次 elaboration 的展开结果**（parameter 已落地、generate 已展开），是 GTECH 的载体。
 
-**贯穿示例 RTL**（`examples/elab_walkthrough/`）：`child.sv`、`top.sv`。 下文各节 **输入/输出案例** 均以此为主线，可用 `analyze` + `elaborate top -parameters "N=2,W=8"` 对照工具输出。
+**贯穿示例 RTL**（`examples/elab_walkthrough/`）：`child.sv`、`top.sv`。
+
+下文各节 **输入/输出案例** 均以此为主线，可用 `analyze` + `elaborate top -parameters "N=2,W=8"` 对照工具输出。
 
 ### 各阶段输入/输出一览
 
