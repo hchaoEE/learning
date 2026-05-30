@@ -89,6 +89,10 @@ assign v = '0;  // 填充零
 - 存储器、除法、异步读等提前查阅 **Foundry / 综合团队提供的推断与宏单元指南**（Design Compiler `compile_ultra`、RAM 映射约束等）。
 - 下一章编码规范进一步归纳 **团队级规则**。
 
+## 延伸阅读
+
+- [09 SystemVerilog 与 Verilog 对比](./09-systemverilog-vs-verilog.md)（`always_ff`、SVA、验证专用语法等）
+
 ## 下一节
 
 [08 编码规范](./08-coding-guidelines.md)

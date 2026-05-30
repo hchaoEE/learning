@@ -99,6 +99,10 @@ logic [ADDR_W-1:0] ptr;
 - 区分按位、逻辑、算术移位与有符号属性。
 - 用 `parameter` 管理可配置位宽，避免魔数。
 
+## 延伸阅读
+
+- SystemVerilog 的 `logic`、`'0` 等与 Verilog 差异见 [09-systemverilog-vs-verilog.md](./09-systemverilog-vs-verilog.md)
+
 ## 下一节
 
 [03 连续赋值与过程块](./03-continuous-and-procedural.md)

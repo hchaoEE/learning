@@ -38,6 +38,7 @@ docs/
 │   ├── 06-generate-and-parameters.md
 │   ├── 07-synthesizable-subset.md     # 可综合子集 vs 仿真专用构造
 │   ├── 08-coding-guidelines.md        # 编码规范与反模式
+│   ├── 09-systemverilog-vs-verilog.md # SV 与 Verilog 对比
 │   └── examples/                      # 可综合示例（供仿真/综合实验）
 │       └── README.md
 │
