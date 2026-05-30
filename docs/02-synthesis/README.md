@@ -7,7 +7,7 @@ ASIC **逻辑综合** 原理与工程实践。工具以 **Design Compiler / Fusi
 | 序号 | 文档 | 状态 | 内容 |
 |------|------|------|------|
 | 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | 综合三阶段、输入输出 |
-| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | Analyze、Elaborate、GTECH、check_design |
+| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端内部：AST、Elab 引擎、RTL→GTECH lowering、Design DB |
 | 2 | [02-inference.md](./02-inference.md) | 待写 | 寄存器、latch、RAM、乘法器推断 |
 | 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 待写 | 工艺映射 |
 | 4 | [04-optimization.md](./04-optimization.md) | 待写 | 面积/延时/功耗优化 |
