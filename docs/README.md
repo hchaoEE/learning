@@ -42,14 +42,15 @@ docs/
 │   └── examples/                      # 可综合示例（供仿真/综合实验）
 │       └── README.md
 │
-├── 02-synthesis/                      # 逻辑综合（进行中）
-│   ├── README.md
+├── 02-synthesis/                      # 逻辑综合（见 02/README、DESIGN）
+│   ├── README.md / DESIGN.md
 │   ├── 00-synthesis-overview.md
 │   ├── 01-rtl-parsing-and-elaboration.md
 │   ├── 02-inference.md
-│   ├── 04-technology-mapping.md
 │   ├── 03-optimization.md
+│   ├── 04-technology-mapping.md
 │   ├── 05-constraints-sdc.md
+│   ├── 06-timing-driven-optimization.md
 │   ├── 07-synthesis-reports.md
 │   └── 08-low-power-synthesis.md
 │
