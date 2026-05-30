@@ -23,17 +23,17 @@ GTECH 网表（elab / compile 早期）
 └───────────────────────────────────────┘
         │
         ▼
-  工艺映射（绑定 .lib 单元或 DesignWare / 宏）
+  AIG / 布尔优化（组合部分，见 [03 优化](./03-optimization.md)）
         │
         ▼
-  AIG / 布尔优化（组合部分，见 [04 优化](./03-optimization.md)）
+  工艺映射（绑定 .lib 单元或 DesignWare / 宏）
 ```
 
 | 阶段 | 输入 | 输出 |
 |------|------|------|
 | Lowering（01 章） | RTL | `GTECH_SEQGEN`、`GTECH_LAT`、`GTECH_RAM` 等 **候选** |
 | **推断（本章）** | GTECH + 属性 + 工艺策略 | **带资源类型标签** 的网表 + 推断报告 |
-| Mapping（03 章） | 标签 + .lib | `DFFRX1`、`ram256x32`、`DW02_mult` 等 |
+| Mapping（04 章） | 标签 + .lib | `DFFRX1`、`ram256x32`、`DW02_mult` 等 |
 
 **与 Elaboration 的边界**：Elaboration 已可能标 `LATCH_INFER`；**推断** 做 **二次确认**、与工艺 **latch 单元是否允许**、**RAM 模板是否匹配** 联动。
 

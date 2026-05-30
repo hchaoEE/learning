@@ -59,7 +59,7 @@ SDC 不是「综合完成之后」才出现：
 - 03–08 写作时沿用
 - 示例 RTL 放 `examples/<topic>_walkthrough/`
 
-## 6. 待办优先级（建议写作顺序）
+## 6. 待办优先级（已完成首版正文）（建议写作顺序）
 
 1. **05-constraints-sdc** — 后续章节依赖约束语言
 2. **03-optimization** — AIG 主文

@@ -13,10 +13,10 @@ ASIC 逻辑综合与物理设计 **自学文档** 仓库（标准单元流程，
 docs/
 ├── 00-preface/     # 术语与前言
 ├── 01-rtl/         # ★ RTL（进行中）
-├── 02-synthesis/   # 逻辑综合（待写）
+├── 02-synthesis/   # 逻辑综合（已完成）
 ├── 03-pnr/         # 布局布线（待写）
 ├── 04-flow-and-tools/
 └── 05-practice/
 ```
 
-欢迎按 `docs/README.md` 中的顺序阅读；后续章节将依次补充综合原理与 PnR 原理。
+欢迎按 `docs/README.md` 中的顺序阅读；综合篇 00–08 已齐；可继续深化示例与实验与 PnR 原理。

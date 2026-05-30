@@ -94,7 +94,7 @@ flowchart LR
 - [x] **01-rtl**：RTL 语法与可综合写法（第一版）
 - [x] 02-synthesis：01 RTL 解析与 Elaboration
 - [x] 02-synthesis：02 推断
-- [ ] 02-synthesis：03–08 章节（骨架已建）
+- [x] 02-synthesis：全章（00–08）
 - [ ] 03-pnr：原理章节
 - [ ] 示例与实验脚本
 

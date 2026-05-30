@@ -59,12 +59,12 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | IR 全景、compile 里程碑、阅读地图 |
 | 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端：Analyze / Elaborate / Lowering → GTECH |
 | 2 | [02-inference.md](./02-inference.md) | **已写** | 寄存器 / Latch / RAM / 乘除 / ICG 推断 |
-| 3 | [03-optimization.md](./03-optimization.md) | 骨架 | **AIG 主章**；技术无关布尔优化 |
-| 4 | [04-technology-mapping.md](./04-technology-mapping.md) | 骨架 | .lib、AIG/网表 → 标准单元 |
-| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | 骨架 | SDC、时钟、IO、例外路径 |
-| 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | 骨架 | 映射后 WLM/拓扑、迭代收敛 |
-| 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | 骨架 | 面积/时序/约束/资源报告 |
-| 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | 骨架 | UPF、ICG、多电压 |
+| 3 | [03-optimization.md](./03-optimization.md) | **已写** | **AIG 主章**；技术无关布尔优化 |
+| 4 | [04-technology-mapping.md](./04-technology-mapping.md) | **已写** | .lib、AIG/网表 → 标准单元 |
+| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | **已写** | SDC、时钟、IO、例外路径 |
+| 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | **已写** | 映射后 WLM/拓扑、迭代收敛 |
+| 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | **已写** | 面积/时序/约束/资源报告 |
+| 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | **已写** | UPF、ICG、多电压 |
 
 ---
 
