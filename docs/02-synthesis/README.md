@@ -1,17 +1,26 @@
 # 02 逻辑综合
 
-> **状态：待编写** — 骨架已预留，完成 01-rtl 后展开。叙述以 **Synopsys Design Compiler / Fusion Compiler** 或 **Cadence Genus** 为代表的 ASIC 综合流程为准。
+ASIC **逻辑综合** 原理与工程实践。工具以 **Design Compiler / Fusion Compiler**、**Genus** 为主。
 
-## 计划章节
+## 章节导航
 
-1. RTL 到门级网表总览（elaboration → mapping → optimization）
-2. 推断：寄存器、锁存器、RAM、乘法器
-3. 工艺映射（technology mapping）
-4. 优化目标：面积、延时、功耗
-5. SDC 约束基础
-6. 读懂综合报告（面积、时序、约束违例）
-7. 低功耗综合简介
+| 序号 | 文档 | 状态 | 内容 |
+|------|------|------|------|
+| 0 | [00-synthesis-overview.md](./00-synthesis-overview.md) | 已写 | 综合三阶段、输入输出 |
+| 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | Analyze、Elaborate、GTECH、check_design |
+| 2 | [02-inference.md](./02-inference.md) | 待写 | 寄存器、latch、RAM、乘法器推断 |
+| 3 | [03-technology-mapping.md](./03-technology-mapping.md) | 待写 | 工艺映射 |
+| 4 | [04-optimization.md](./04-optimization.md) | 待写 | 面积/延时/功耗优化 |
+| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | 待写 | SDC 约束 |
+| 6 | [06-timing-and-area-reports.md](./06-timing-and-area-reports.md) | 待写 | 读懂报告 |
+| 7 | [07-low-power-synthesis.md](./07-low-power-synthesis.md) | 待写 | 低功耗综合 |
+
+## 阅读顺序
+
+```text
+00 总览 → 01 RTL 解析与展开 → 02 推断 → 03 映射 → 04 优化 → 05 SDC → 06 报告
+```
 
 ## 与 01-rtl 的衔接
 
-RTL 中的 `always` 风格、完整赋值、存储器读写模式，直接决定本章中的 **推断结果** 与 **QoR**。
+RTL 中的 `always` 风格、parameter/generate、端口位宽，直接决定 **elaboration 是否通过** 以及 **推断结果**。建议先完成 [01-rtl](../01-rtl/) 再读本章。

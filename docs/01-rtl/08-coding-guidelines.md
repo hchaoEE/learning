@@ -86,4 +86,4 @@ always @(posedge clk_b)
 
 ---
 
-**01-rtl 章节完结。** 下一步学习：[02-synthesis](../02-synthesis/)（逻辑综合原理，待写）。
+**01-rtl 章节完结。** 下一步学习：[02-synthesis / 01 RTL 解析与 Elaboration](../02-synthesis/01-rtl-parsing-and-elaboration.md)。

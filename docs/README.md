@@ -42,10 +42,11 @@ docs/
 │   └── examples/                      # 可综合示例（供仿真/综合实验）
 │       └── README.md
 │
-├── 02-synthesis/                      # 逻辑综合（待展开）
+├── 02-synthesis/                      # 逻辑综合（进行中）
 │   ├── README.md
-│   ├── 01-rtl-to-gates-overview.md
-│   ├── 02-elaboration-and-inference.md
+│   ├── 00-synthesis-overview.md
+│   ├── 01-rtl-parsing-and-elaboration.md
+│   ├── 02-inference.md
 │   ├── 03-technology-mapping.md
 │   ├── 04-optimization.md
 │   ├── 05-constraints-sdc.md
@@ -90,7 +91,8 @@ flowchart LR
 
 - [x] 文档骨架与目录规划
 - [x] **01-rtl**：RTL 语法与可综合写法（第一版）
-- [ ] 02-synthesis：原理章节
+- [x] 02-synthesis：01 RTL 解析与 Elaboration
+- [ ] 02-synthesis：其余章节
 - [ ] 03-pnr：原理章节
 - [ ] 示例与实验脚本
 
