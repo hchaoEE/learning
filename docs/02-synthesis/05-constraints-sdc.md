@@ -257,7 +257,41 @@ Elaboration 后 **generate 路径、uniquify 后缀** 必须与 SDC 一致（见
 
 ---
 
-## 9. 小结
+---
+
+## 9. 生成时钟与 uncertainty（内部）
+
+### 9.1 generated_clock
+
+**语义**：从 **master clock** 或 **pin 波形** 派生子 clock 对象。
+
+```text
+master clk @ 100MHz
+  └── generated clk_div2 @ 50MHz（分频）
+        └── FF 的 launch/capture 可绑不同 clock 对象
+```
+
+**内部**：timing graph 上 **边延迟 + 波形相位** 决定跨域路径是否检查。
+
+### 9.2 clock uncertainty
+
+**语义**：在 required 或 launch 上 **减 margin**（setup/hold 各可不同）。
+
+```text
+required(D) ← capture_edge − setup − uncertainty_setup
+```
+
+**06**：uncertainty 越大 → slack 越小 → **更激进 sizing**。
+
+### 输入/输出案例 9.1
+
+**派生时钟**：PLL 输出 `clk_cpu` from `clk_ref` / 2
+
+**内部**：`clk_cpu` period=2×`clk_ref`；跨 ref/cpu 域路径须 **例外或多周期**（§4）。
+
+---
+
+## 10. 小结
 
 | 要点 | |
 |------|--|

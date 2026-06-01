@@ -170,6 +170,17 @@ rst_n=0, d=1, clk edge … → R.q=0, I.Q=1  → diff=1 → 不等价
 
 常因 **reset 极性** 或 **scan 模式 pin** 未约束。
 
+### 输入/输出案例 7.2 — 黑盒 miter 截断
+
+```text
+R: SRAM 行为模型（RTL）     I: SRAM 硬宏 .lib 黑盒
+        │                           │
+        └──── compare 边界 pin ─────┘
+              （不展开宏内部）
+```
+
+**失败**：R 展开数组读逻辑，I 仅 **pin 级黑盒** → miter 输入维数不一致 → 须 **两侧同黑盒 + timing model**。
+
 ---
 
 ## 8. 层次化 LEC（内部）

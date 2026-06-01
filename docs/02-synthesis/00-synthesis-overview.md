@@ -144,6 +144,8 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 
 → 逐步案例见 [03 §11](./03-optimization.md#11-案例集锦逐步理解)、[04 §11](./04-technology-mapping.md#11-案例集锦逐步理解-mapping)。
 
+**端到端串联**：[examples/mini_chain/README.md](./examples/mini_chain/README.md)（单模块走完全链 IR 快照）。
+
 ---
 
 ## 下一节

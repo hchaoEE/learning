@@ -40,6 +40,17 @@ Power Intent Layer（附在 Design DB）
 | `set_retention` | 指定 FF 组 → **retention register** 替换标签 |
 | `set_power_switch` | 域与 **header/footer switch** 网络关联 |
 
+### 2.1 Retention 寄存器（内部）
+
+**动作**：关断域前 **save** FF 状态；上电 **restore**。
+
+```text
+PD_CPU 关断： FF → retention bank
+PD_CPU 上电： retention → FF
+```
+
+**DB**：`retention` 属性 on SEQGEN → 映射 **retention DFF** + save/restore 控制。
+
 **无 UPF**：综合器 **不知域边界** → 无法自动插 LS/ISO，仅能靠 **同电压 .lib** 做普通映射。
 
 ### 输入/输出案例 2.1

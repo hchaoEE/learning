@@ -31,7 +31,7 @@ Mapped 门级网表 + 初始 STA（WLM）
 
 **输入**：AIG 节点 8500；`.lib` 含 800 种组合单元
 
-**输出**：门级实例 6200；`report_reference` 出现 `ND2D1`、`INVX1`、`MUX2D1` 等 **库名**。
+**输出**：mapped instance 计数≈6200；库单元名 `ND2D1`、`INVX1`、`MUX2D1` 等（**无 GTECH 组合**）。
 
 ---
 
@@ -65,11 +65,29 @@ library (slow) {
 | `pin capacitance` | 负载估算 | 签核 |
 | `dont_use` / `dont_touch` | 过滤候选 | — |
 
-### 输入/输出案例
+### 3.1 NLDM 延时查表（与 06 cell arc 衔接）
 
-**输入**：`set_dont_use [get_lib_cells {*XL* *SDF*}]`
+映射与 STA 共用 **同一套查表语义**：
 
-**输出**：映射 **从不选** 被禁单元；若导致无法 cover → **mapping 报错** 或降级 cover。
+```text
+cell_delay = lookup( input_slew, output_load, cell_rise/fall table )
+```
+
+| 量 | 来源 | 04 映射 | 06 TDO |
+|----|------|---------|--------|
+| input_slew | 上游 pin 或默认 | 估 cut delay | 迭代更新 |
+| output_load | fanout × C_pin + net C | WLM 估 | 更准估 |
+| table | .lib `cell_rise`/`cell_fall` | 选 cover | upsize 换表 |
+
+### 输入/输出案例 3.1
+
+**单元** `ND2D1`：slew=0.05 ns，load=0.01 pF → delay≈0.08 ns；换 `ND2D4` 同条件 → delay≈0.05 ns（**06 upsize 依据**）。
+
+### 输入/输出案例 3.2 — dont_use 过滤
+
+**DB 策略**：库单元子集 `dont_use`（如禁 XL 单元）
+
+**内部**：cover 枚举 **跳过** 禁用单元；若无合法 cover → mapping **报错或降级**。
 
 ---
 
@@ -125,35 +143,7 @@ flowchart TB
 | cut1 | `{a,b,c}` 若 K≥3 | 一个 3-input AND（若库有）或 **AND+AND** |
 | cut2 | `{t_ab, c}`，`t_ab=a&b` | `ND2` + `ND2` 两级 |
 
-**工具选**：delay 模式可能选 **单单元 3-input**；area 模式可能选 **两个 2-input ND2**（更小面积）。
-
-### 4.5 全局 DP（流程型映射）
-
-步骤 5 的 **全局 DP** 指：按拓扑序（PI→PO）为每个 AIG 节点 `n` 记录 **最优 (cost, cover)**：
-
-```text
-cost(n) = min over cuts C of:
-            area/delay(cover_C)
-          + sum_{f in fanin(C)} cost(f)
-```
-
-**动作**：
-
-1. 子节点先定最优 → 父节点 cut 的 fanin **代价已知**  
-2. 枚举 cut 时累加 **子树 cost + 本 cover cost**  
-3. 回溯得到 **整图最小 cost 映射**
-
-### 输入/输出案例 4.5 — 两节点共享 fanin
-
-```text
-      a ──┐
-      b ──┼── t ──┬── n1
-            └── t ──┴── n2
-```
-
-**DP**：`t` 的最优 cover **只算一次**；`n1`、`n2` 共享子结果 → 避免重复映射 `t`。
-
----
+**delay 模式**可能选 **单单元 3-input**；**area 模式**可能选 **两个 2-input ND2**（更小面积）。
 
 ---
 
@@ -209,9 +199,7 @@ OR2D1 U3 ( .A1(t2), .A2(c), .Y(y) );
 // 或一个 OAI22 / 其他 cover
 ```
 
-| 步骤 | 你看到的 |
-|------|----------|
-| `report_reference` | `ND2`、`INV`、`OR2` 计数 |
+| 映射完成 | mapped 库单元分布 |
 | 无 AIG 名 | 只剩库单元 |
 
 ---
@@ -243,20 +231,27 @@ arrival(n) = max( arrival(inputs) ) + cell_delay(cover)
 
 ---
 
-### 4.5 全局映射 vs 贪心
+### 4.5 全局映射 vs 贪心（DP）
 
 | 算法 | 行为 |
 |------|------|
-| **贪心** | 每个节点独立选最优 cut，快 |
-| **全局 DP** | 考虑 cut 之间 **共享** 子图，面积更优 |
+| **贪心** | 每节点独立选最优 cut |
+| **全局 DP** | `cost(n) = min_C( cost(cover_C) + Σ cost(fanin) )`，共享子图只映射一次 |
 
-商业工具多 **混合**；ABC `map` 支持多种 `-a` 选项。
+```text
+cost(n) = min over cuts C of:
+            area/delay(cover_C) + sum_{f in fanin(C)} cost(f)
+```
 
-### 输入/输出案例
+### 输入/输出案例 4.5 — 共享 fanin
 
-**共享子图** `t = a & b`，驱动 `y1`、`y2`
+```text
+      a ──┐
+      b ──┼── t ──┬── n1
+            └── t ──┴── n2
+```
 
-**全局映射**：`t` 只映射 **一次** `ND2D1`，fanout=2 — 与 AIG strash 一致。
+**DP**：`t` 的最优 cover **只映射一次**，fanout=2 — 与 AIG strash 一致。
 
 ---
 
@@ -280,7 +275,7 @@ assign y = sel ? b : a;
 
 **输入**：4 位 `y`，1 位 `sel`
 
-**输出**：4 个 `MUX2D1` 或 4 组 NAND 网络（`report_cell` 统计）。
+**输出**：4 个 `MUX2D1` 或 4 组 NAND 网络（**mapped MUX 计数=4 或 NAND 组×4**）。
 
 ---
 
@@ -316,7 +311,17 @@ GTECH_SEQGEN + 属性 ──► 选 DFF 族 ──► 连接 .CK .D .Q .RN .E
 | clock enable | `DFFEQ*` / `EDFF*` |
 | scan | `SDFFRQ*` |
 
-### 输入/输出案例
+### 6.1 SEQGEN → .lib pin 映射规则
+
+| GTECH SEQGEN pin | .lib DFF pin | 内部动作 |
+|------------------|--------------|----------|
+| CK | CK / CP | 直连 clock net |
+| D | D | 数据 |
+| Q | Q | 输出 |
+| RN / SN | RN / SN | async reset/set 极性 **须与推断一致** |
+| E / EN | E 或 D 前 MUX | 无 E 脚时 **D 端插入 MUX2** |
+
+### 输入/输出案例 6.1
 
 **输入**：
 
@@ -334,8 +339,7 @@ DFFRX2 u_reg (
 );
 ```
 
-| 若无 `.E` | 工具用 **MUX 在 D 端** 实现 enable |
-|-----------|-------------------------------------|
+| 若无 `.E` 脚 | 映射器在 **D 前插 MUX2** 实现 enable |
 
 ---
 

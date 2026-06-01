@@ -28,9 +28,9 @@ Elaboration 与 [推断](./02-inference.md) 之后，组合逻辑仍以 **GTECH 
 
 ### 输入/输出案例
 
-**输入**：`compile` 前 Elaborate 后 `report_cell` 见 `GTECH_MUX`、`GTECH_AND`。
+**输入**：Elaborate 后 Design DB
 
-**输出**：`compile` 中期（pre_map）同一设计 **GTECH 组合节点减少**、或映射前 AIG 统计 **node count** 下降（工具报告名因厂商而异）。
+**输出**：组合段 **GTECH_MUX、GTECH_AND** 计数 >0；尚无 `.lib` 单元名。
 
 ---
 
@@ -333,7 +333,28 @@ a ──AND──AND──AND──AND── y   level=4
 
 **内部**：`u_mult` 周围组合锥仍 AIG 化；**乘法器内部** 不拆成 AND 阵列。
 
-### 输入/输出案例 5.7 — 整模块优化前后（示意）
+### 5.7 算术共享与 CSE（内部）
+
+**动作**：识别 **同一子表达式** 多次使用（如 `a*b` 出现在两个 assign），在 GTECH/AIG 层 **共享节点** 而非重复 MULT/AND 锥。
+
+```text
+assign p = a * b;
+assign q = (a * b) + c;
+
+Lowering 后（未 CSE）：两个 GTECH_MULT 或两个乘法锥
+CSE 后：一个 MULT 输出 fanout→2
+```
+
+### 输入/输出案例 5.7
+
+| 状态 | AIG/MULT 节点 |
+|------|---------------|
+| CSE 前 | 2 份乘法锥 |
+| CSE 后 | 1 份，fanout=2 |
+
+**边界**：`dont_touch` 乘法宏 **不参与** 跨实例 CSE。
+
+### 输入/输出案例 5.8 — 整模块优化前后（示意）
 
 | 指标 | Elaborate 后 | 粗优化后 |
 |------|----------------|----------|
@@ -349,17 +370,21 @@ a ──AND──AND──AND──AND── y   level=4
 strash → rewrite → refactor → balance → map
 ```
 
-### 输入/输出案例 6.1 — Yosys + ABC（可复现）
+### 输入/输出案例 6.1 — ABC pass 对照
 
-```bash
-yosys -p "read_verilog comb_dup.sv; hierarchy -top comb_dup; proc; opt; abc -g AND -K 6"
-```
+| ABC pass | 综合器内部（概念） |
+|----------|-------------------|
+| `strash` | 结构性 dedup |
+| `rewrite` | 小窗 NPN 替换 |
+| `refactor` | 大窗重组 |
+| `balance` | depth 平衡 |
+| `map` | [04](./04-technology-mapping.md) technology mapping |
 
-| 步骤 | 观察 |
-|------|------|
-| `proc` 后 | 见 `$and`、`$or` 通用门 |
-| `abc -g AND` 后 | 仅剩 `$_AND_`、`$_NOT_` — **与 AIG 同构** |
-| 统计 | `comb_dup` 中 `a&b` **只出现 1 次** AND 链（strash） |
+**开源对照**：ABC 的 `strash/rewrite/…/map` 与上表 pass **同名或等价**；用于验证算法理解，非综合 flow 必需。
+
+### 输入/输出案例 6.1b — strash 可观测
+
+`comb_dup.sv` 经 strash 后，`(a&b)` 在 AIG 中 **仅 1 个 AND 节点**，fanout=2。
 
 ### 输入/输出案例 6.2 — 与 04 映射分界
 

@@ -6,11 +6,11 @@
 
 ## 1. 标准交付清单
 
-| 文件 | 内容 | 消费者 |
-|------|------|--------|
-| **门级网表** `*.v` / `*.vg` | mapped Verilog | PnR、形式、仿真 |
-| **SDC** `*.sdc` | 时序约束 | PnR、STA |
-| **UPF** `*.upf` | 低功耗意图 | PnR、功耗签核 |
+| 文件 | 内容 | DB / 内部语义 |
+|------|------|---------------|
+| **门级网表** `*.v` | mapped Verilog | Design DB 序列化 |
+| **SDC** `*.sdc` | 约束 | timing graph 文本形式 |
+| **UPF** `*.upf` | 低功耗意图 | power intent 层 |
 | **DDC/NDM** | 工具数据库 | 同工具链增量 |
 | **SDF**（可选） | 延时标注 | 仿真 |
 | **SPEF**（PnR 后） | 寄生 | STA 签核 |
@@ -66,14 +66,14 @@
 ## 3. 签核门控（Quality Gates）
 
 ```text
-□ Elaboration / check_design clean
-□ 无未约束时钟（report_clock）
-□ WNS/TNS 达标（或 signed-off waiver）
-□ Max transition/cap/fanout clean
-□ LEC pass（09）
-□ DFT scan 完成（若本阶段插入）（11）
-□ 推断报告无意外 latch（02/07）
-□ 低功耗 UPF 与网表一致（08）
+□ Design DB：elaboration / check_design 无 ERROR
+□ timing graph：无 unclocked FF（05 §2）
+□ WNS/TNS / hold：各 MCMM corner 闭合（06）
+□ transition/cap：DRC 无违例（06 §5）
+□ LEC：miter UNSAT（09）
+□ DFT：scan IR 完成（若适用）（11）
+□ 推断：LATCH 计数=0（02/07）
+□ UPF：域标注与 LS/ISO 实例一致（08）
 ```
 
 ### 输入/输出案例

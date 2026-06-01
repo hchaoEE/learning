@@ -159,6 +159,23 @@ a ──► ND2D1 ──► ND2D1 ──► ND2D1 ──► ND2D1 ──► ND2D
 
 引擎 **未停止**：仍负，继续选 buffer 或 further upsize，直至 WNS ≥ 0 或 effort 用尽。
 
+### 2.6 Pin swap 与 VT swap（内部）
+
+| Transform | 动作 | delay arc 变化 |
+|-----------|------|----------------|
+| **Pin swap** | 交换对称输入（如 NAND 的 A1/A2） | **哪条输入弧** 在关键路径上改变 |
+| **VT swap** | LVT↔HVT 同 footprint | delay↓ 但 leakage↑；06 在 setup 仍负时使用 |
+
+### 输入/输出案例 2.3 — pin swap
+
+**单元** `ND2D1(A1←late, A2←early)`：late 输入在 **非关键弧**。
+
+**swap 后**：early 接关键 net → **该 cell arc delay ↓** 0.02 ns（示意）。
+
+### 输入/输出案例 2.4 — VT swap
+
+**Corner slow_max**：`ND2D1`→`ND2LVT1` 同驱动 → cell arc −0.06 ns；**fast_min hold** 需复验。
+
 ---
 
 ## 3. Setup 修复（内部）

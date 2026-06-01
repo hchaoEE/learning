@@ -31,13 +31,19 @@ clk ──► CKLNQD1/E ──► clk_g ──► 32 × DFFX1
 
 ---
 
-## 案例 B — 跨电压域（概念，08 §2）
+## 案例 B — 跨电压域（08 §2）
 
-**DB 标注**：net `cpu_irq` 从 `PD_0p9` → `PD_1p0`
+**DB 标注（概念，无真实 .upf 文件）**：
 
-**映射 cut point**：插入 `LEVEL_SHIFTER` +（关断时）`ISOLATION_CELL`
+| 对象 | 属性 |
+|------|------|
+| `PD_CPU` | voltage=0.9V，可关断 |
+| `PD_IO` | voltage=1.0V，always_on |
+| net `cpu_irq` | crossing={PD_CPU, PD_IO} |
 
-**时序图**：LS arc 增加 **setup/hold** check，corner 各用对应电压 .lib。
+**映射 cut point**：`LEVEL_SHIFTER` +（关断时）`ISOLATION_CELL`
+
+**时序图**：LS arc 增加 setup/hold；MCMM 各 corner 用对应电压 `.lib`。
 
 ---
 
