@@ -1,118 +1,136 @@
-# 2.11 DFT 与可测性（扫描链概述）
+# 2.11 DFT 与可测性 — 网表结构变换
 
-生产测试需要 **将内部节点拉到芯片管脚**。**DFT（Design For Test）** 在综合阶段或紧接综合插入 **扫描链（scan）**、压缩逻辑等，并与 **时序、LEC、功耗** 联动。
+生产测试需 **控制/观测内部 FF**。**DFT** 在功能综合后把 mapped 网表 **改写为可扫描结构**，再进入 [06](./06-timing-driven-optimization.md) 再收敛与 [09 LEC](./09-logical-equivalence-checking.md)。
 
-> 深度 DFT（ATPG、BIST）另有专书；本章覆盖 **综合工程师必须知道的接口**。
+> 本章讲 **scan 如何改 DB 拓扑**；ATPG 工具链从简。
 
 ---
 
 ## 1. 在流程中的位置
 
 ```text
-功能 RTL compile（02–06）
+功能 compile（01–06）→ mapped netlist + timing clean
         │
         ▼
-【DFT 插入】scan cell 替换 / 串链 / compression
+【DFT pass】DFF → SDFF，SI/SO/SE 连接，链序确定
         │
         ▼
-时序再收敛（06）──► LEC（09）──► 交付（12）
+06 再优化（scan 路径 timing）→ LEC（09）→ 交付（12）
 ```
 
-| 工具例 | 阶段 |
-|--------|------|
-| `dft_compiler` / `insert_dft` | Synopsys |
-| Genus + Modus | Cadence |
+**顺序不可乱**：scan 改 FF 结构 → **delay 变** → 必须 **再 STA/再优化**。
 
 ---
 
-## 2. 扫描基本概念
+## 2. Scan 的 IR 变换（内部）
 
-| 术语 | 说明 |
-|------|------|
-| **Scan chain** | 将 FF 串成移位寄存器，从 SDI 灌入、SDO 读出 |
-| **Scan enable (SE)** | 测试模式选择 |
-| **Capture** | 组合逻辑结果打入 FF |
-| **Shift** | 链上移位 |
+### 2.1 功能 FF → Scan cell
 
-正常模式：FF 功能工作；测试模式：链化。
+| 功能单元 | Scan 单元（概念） | 新增 pin |
+|----------|-------------------|----------|
+| `DFFX1` (D, CK, Q) | `SDFFX1` | **SI**（scan in）、**SE**（scan enable） |
 
-### 输入/输出案例
+**内部连接**：
 
-**输入**：10 万个功能 FF
-
-**输出**：映射为 `SDFF*`（scan DFF），**20 条** scan chain，每条 ~5000 级。
-
----
-
-## 3. 对综合的影响
-
-| 影响 | 说明 |
-|------|------|
-| **单元换型** | DFF → SDFF，面积略增 |
-| **时序** | scan 路径、hold 在 shift 模式 |
-| **复位** | 测试模式常需 **异步复位可控** |
-| **时钟** | OCC（On-Chip Clock）控制测试时钟 |
-
-### 输入/输出案例
-
-**输入**：功能 WNS = +0.05ns
-
-**输出**：插入 scan 后 WNS = -0.02ns → 需 **06 章** 再优化或 **放宽** 测试时钟。
-
----
-
-## 4. 与 LEC 的关系
-
-插入 scan 后网表 **结构变化** 但仍应与 **带 DFT 的 RTL** 或 **pre-DFT RTL + 形式约束** 等价。
-
-| 模式 | 比对 |
-|------|------|
-| Pre-scan LEC | RTL ↔ 功能网表（交付前常见） |
-| Post-scan LEC | DFT RTL ↔ scan 网表 |
-
-### 输入/输出案例
-
-**失败**：RTL 无 scan pin，网表有 `SI/SO` → 需 **读入 DFT wrapper RTL** 或 **blackbox scan logic**。
-
----
-
-## 5. 压缩与 ATPG（简述）
-
-| 技术 | 作用 |
-|------|------|
-| **Scan compression** | 减少 SDI/SDO 管脚 |
-| **LBIST/MBIST** | 存储器自测，常独立 |
-
-综合输出 **SPF/WGL** 给 ATPG 工具（Modus/Tessent）。
-
----
-
-## 6. 约束
-
-```tcl
-# 测试时钟（概念）
-create_clock -name test_clk -period 100 [get_ports test_clk]
-set_dft_configuration -scan_chain_count 20
+```text
+Functional mode (SE=0):  D → FF → Q  （与原来相同）
+Scan shift mode (SE=1):  SI → FF → Q  （串链移位）
+Capture:                 D → FF → Q  （组合结果打入）
 ```
 
-SDC 常分 **functional / test** 模式（MMMC scenario）。
+### 2.2 Scan chain 拓扑
 
-### 输入/输出案例
+```text
+SDI ──► FF0 ──► FF1 ──► … ──► FFk ──► SDO
+         Q→SI   Q→SI         Q→SO
+```
 
-**输入**：仅 functional SDC 签核
+**链序算法**（启发式）：
 
-**输出**：ATPG 报 **untested** 过高 → 补 **test mode** 约束与 scan 定义。
+- 按 **clock domain** 分链  
+- 平衡 **链长**（ATPG 时间）  
+- 避开 **dont_scan** / **retention** / **macro 内 FF**
+
+### 输入/输出案例 2.1
+
+**输入 DB**：100k 功能 DFF  
+**DFT pass 后**：100k SDFF，**20 链** × ~5k 级；netlist 增 **SI/SO/SE** port 与 **scan 控制** net。
 
 ---
 
-## 7. 小结
+## 3. 对 timing graph 的影响
 
-DFT = **scan 插入 + 再优化 + 再 LEC**；与功能综合 **串行** 而非可选装饰。
+| 影响 | 内部 |
+|------|------|
+| 单元换型 | cell arc **delay 略变** |
+| SE/SI net | 新 **data/check** 路径（test mode） |
+| Hold | **shift 模式** 下 fast corner 易违例 |
+| Clock | 测试可能用 **OCC** 切 test clock |
+
+**MCMM**：functional mode 与 **test mode** 为 **不同 mode** → 各自 timing graph 子集（见 [05 §6](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)）。
+
+### 输入/输出案例 3.1
+
+**Functional WNS = +0.05 ns** → DFT 后 **−0.02 ns** → 06 在 **functional corner** 再 sizing。
+
+---
+
+## 4. 与 LEC 的内部关系
+
+| 比对模式 | R | I |
+|----------|---|---|
+| Pre-scan | RTL | 功能 mapped 网表 |
+| Post-scan | **DFT RTL**（含 scan 端口）或 **scan 等价约束** | scan 网表 |
+
+**失败机制**：R 无 `SI`，I 有 → compare point **维度不匹配** → 需在 R 加 **scan wrapper 模型** 或 **blackbox scan logic**。
+
+---
+
+## 5. 压缩与 ATPG（结构简述）
+
+| 结构 | DB 效果 |
+|------|---------|
+| **Scan compression** | 链中间插 ** decompressor/compactor** → 逻辑锥增大 |
+| **LBIST/MBIST** | 存储器 **BIST 控制器** 挂宏边界 |
+
+综合输出 **链定义**（SPF/CTL 等）给 ATPG；**不改变** 功能 miter 的 R 侧，除非 post-scan LEC。
+
+---
+
+## 6. 约束语义（test mode）
+
+Test mode 在 DB 上 **额外 clock / false_path / case**：
+
+| 语义 | 作用 |
+|------|------|
+| test clock | shift 时序 check |
+| functional false_path on scan | 避免虚假 cross-mode 违例 |
+| `scan_enable` case | SE=0/1 分模式 STA |
+
+仅 functional SDC 签核 → **test 路径未检** → ATPG **untested** 高。
+
+---
+
+## 7. 与 retiming、层次
+
+| 交互 | 内部 |
+|------|------|
+| **Retiming 后 DFT** | FF 顺序变 → **链重排** |
+| **层次块** | 块内 scan 先完成 → 顶层 **串链** |
+| **dont_touch 宏** | 宏内 FF **不可 scan** → 覆盖率洞 |
+
+见 [06 §8.5](./06-timing-driven-optimization.md#85-与-dft层次化)、[10 章](./10-hierarchical-block-synthesis.md)。
+
+---
+
+## 8. 小结
+
+DFT = **mapped IR 的结构 rewrite**（SDFF + 链）+ **再 06** + **再 LEC**；与功能综合 **串行**。
 
 ---
 
 ## 下一节
 
 - [09 LEC](./09-logical-equivalence-checking.md)
+- [06 细粒度](./06-timing-driven-optimization.md)
 - [12 交付](./12-deliverables-and-handoff.md)
-- [08 低功耗](./08-low-power-synthesis.md)

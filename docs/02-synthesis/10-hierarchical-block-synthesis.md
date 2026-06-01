@@ -1,132 +1,151 @@
-# 2.10 层次化与分块综合
+# 2.10 层次化与分块综合 — 内部模型
 
-全芯片一次 `compile` 在 **运行时间、内存、时序收敛** 上常不可行。**层次化综合** 把设计拆成 **子模块（block）** 单独综合，再用 **抽象模型（interface model）** 在顶层组装。
+全芯片一次 compile 在 **内存、时序闭包** 上常不可行。**层次化** 在 Design DB 中引入 **子块 shell + 接口 timing 壳**，使顶层仅优化 **glue logic**。
+
+> 本章讲 **abstract 模型、预算传播、pass 可见性**，不是分块 Tcl 脚本。
 
 ---
 
 ## 1. 动机
 
-| 问题 | 层次化做法 |
-|------|------------|
-| 16h+ compile | 分块 2–4h/块 |
-| 接口时序不清 | **budget** / **ILM** 传递约束 |
-| 团队并行 | CPU 核、DMA、外设各一块 |
-| 复用 | 同 IP 只综合一次 |
-
-### 输入/输出案例
-
-**输入**：200 万门 SoC 顶层 `chip_top`
-
-**输出**：`cpu`/`gpu`/`noc` 三份 netlist + 顶层 **glue** compile **< 4h**。
+| 问题 | DB 层做法 |
+|------|-----------|
+| 单 DB 过大 | 子块 **独立 elaboration + compile** |
+| 接口时序 | 边界 pin 挂 **budget / abstract delay** |
+| 团队并行 | 子块 **frozen netlist** 或 **.ddc shell** |
+| IP 复用 | 同一 ref 只映射一次 |
 
 ---
 
-## 2. 两种主流策略
+## 2. 两种策略的内部差异
 
-| 策略 | 流程 | 优点 | 风险 |
-|------|------|------|------|
-| **Bottom-up** | 子块先综合 → 导出 **.ddc + 模型** → 顶层当黑盒实例 | 块 QoR 可控 | 接口乐观/悲观 |
-| **Top-down + uniquify** | 顶层 compile，工具 **自动划分** | 简单 | 难控子块 |
+| 策略 | DB 结构 | pass 可见性 |
+|------|---------|-------------|
+| **Bottom-up** | 顶层实例化 **子块 shell**（内部 blackbox 或已映射） | 子块内 **全 pass**；顶层 **仅 glue** |
+| **Top-down** | 单 DB，工具 **partition** | 边界可能 **模糊** |
 
-ASIC 量产多用 **Bottom-up + 接口预算**。
+量产 ASIC 多用 **Bottom-up + interface model**。
 
 ```text
-Block A: compile → A.mapped.v + A.sdc + A.LEC clean
-Block B: compile → B.mapped.v + …
-Top:     read A/B 模型 + 综合 glue + IO
+Block A DB: 完整 RTL_A → mapped_A + abstract_A
+Block B DB: 完整 RTL_B → mapped_B + abstract_B
+Top DB:     实例 A_shell, B_shell + top RTL glue
 ```
 
 ---
 
-## 3. 子块交付物（内部）
+## 3. 子块交付的内部产物
 
-| 产物 | 用途 |
-|------|------|
-| Mapped netlist | 顶层实例化或 PnR |
-| **SDC**（块级） | 块内约束 |
-| **Timing abstract** | 顶层 STA：`.lib` 提取模型、**ETM/ILM**、**FRAM**（工具名不同） |
-| **Physical**（可选） |  floorplan 脚、MACRO 列表 |
-| LEC 报告 | 块签核 |
+| 产物 | DB / 文件语义 |
+|------|---------------|
+| Mapped netlist | 子块 **完整 instance 树** |
+| Block SDC | 仅 **块内 clock/IO/exception** |
+| **Timing abstract** | 边界 pin 的 **AT/RT/slew 壳**（不含内部逻辑） |
+| **Physical abstract**（可选） |  footprint、blockage |
+| LEC 证明 | 子块 R↔I 已 **等价** |
 
-### 输入/输出案例
+### 3.1 Timing abstract 是什么
 
-**输入**：`cpu_core` 综合完成，导出 `cpu_core.ddc`
+对子块每个 **边界 pin** 存储：
 
-**输出**：顶层 `read_ddc cpu_core.ddc` 后仅见 **边界 pin timing**，内部 **不可优化**（除非 `set_boundary_optimization`）。
+| 方向 | 抽象内容 |
+|------|----------|
+| **Input pin** | 外部到 pin 的 **max/min delay 预算**、cap、slew |
+| **Output pin** | pin 到外部 **required** 窗口 |
+| **Clock pin** | **latency / uncertainty** 壳 |
+
+顶层 STA **不展开** 子块内部 cell，只读 **abstract 弧** → 运行时间 **线性于 glue 规模**。
+
+### 输入/输出案例 3.1
+
+**子块 `cpu_core` 综合完成** → 导出 abstract。
+
+**顶层 DB**：`cpu_core` 实例 **内部不可见**（dont_touch）；`cpu_core/inst_data` 边界 pin 有 **AT_max=0.3 ns** 等壳。
+
+**06 在顶层**：仅能对 **top 胶水 net** sizing，**不能** upsize `cpu_core` 内 `ND2`。
 
 ---
 
-## 4. 接口时序预算（Budget）
+## 4. 接口时序预算（Budget）传播
 
-顶层 SDC 定义芯片时钟；子块需要 **预算**：
+Budget = 从 **顶层 period** 中 **分配给子块接口** 的时间份额。
 
-```tcl
-# 概念：分配给 cpu_core 的时钟周期份额
-set_clock_latency -source 0.2 [get_clocks clk]
-set_input_delay  0.3 -clock clk [get_ports cpu_core/in_*]
-set_output_delay 0.2 -clock clk [get_ports cpu_core/out_*]
+```text
+T_top = 2.0 ns
+  − IO_budget_top
+  − cpu_core.in_budget
+  − cpu_core.out_budget
+  − uncertainty
+  = cpu_core 内部可用 T_cpu
 ```
 
-| 输入 | 输出 |
+**内部**：子块 compile 时 SDC 读 **T_cpu** 作为 **有效 period**；顶层读 **abstract** 验证 **接口闭合**。
+
+| 预算 | 后果 |
 |------|------|
-| 顶层 2ns 周期 | 子块有效周期 ≈ 2 - 0.3 - 0.2 = **1.5ns** 可用 |
+| 过紧 | 子块 WNS 负 |
+| 过松 | 子块 WNS 正，**顶层接口 timing debt** |
 
-**预算过紧** → 子块 WNS 负；**过松** → 顶层接口 **timing debt**。
+### 输入/输出案例 4.1
 
-### 输入/输出案例
+**子块 WNS = +0.1 ns**（块内闭合）  
+**顶层**：`cpu_core/out_* → top_reg` **slack = −0.3 ns**
 
-**子块 WNS = +0.1**，顶层接口 **slack = -0.3** → 需 **缩预算** 或 **顶层 pipeline** 寄存器。
+**内部诊断**：out_budget **过大**（子块占用过少）或 glue 过深 → **缩 budget 重综合子块** 或 **顶层 pipeline**。
 
 ---
 
-## 5. `dont_touch` / `size_only` / 边界
+## 5. 边界属性与 pass 过滤
 
-| 属性 | 作用 |
-|------|------|
-| `dont_touch` | 顶层不改动子块内部 |
-| `size_only` | 允许修时序但不改逻辑结构 |
-| `set_boundary_optimization` | 允许优化接口组合逻辑 |
+| DB 属性 | pass 行为 |
+|---------|-----------|
+| `dont_touch` | 06 **不 transform** 子树 |
+| `size_only` | 允许 **sizing**，禁止 **逻辑 rewrite** |
+| `boundary_optimization` | 允许优化 **紧贴边界的组合锥**（可能跨 shell） |
+| `dont_retime` | 06 §8 **跳过** 该区域 FF |
 
-### 输入/输出案例
+### 输入/输出案例 5.1
 
-**输入**：子块 LEC 已签核，`set_dont_touch [get_cells cpu_core]`
+**子块 LEC 已签核 + dont_touch**：
 
-**输出**：顶层 compile **不改** `cpu_core` 内部；仅优化 **top 胶水**。
+**顶层 compile 内部队列** 遍历 instance 时 **剪枝** `cpu_core/*` → 仅 **top/glue/*` 进入 transform planner。
 
 ---
 
-## 6. `ungroup` 与 LEC
+## 6. ungroup 与 LEC
 
-综合常 `ungroup` 扁平化以利时序；**层次 LEC** 变难。
+**ungroup** 在 DB 中 **扁平化层次** → LEC compare point **层次名丢失**。
 
-| 策略 | 说明 |
+| 策略 | 内部 |
 |------|------|
-| 块内 `ungroup` | 块级 LEC 仍 RTL↔块网表 |
-| 顶层保留层次 | 便于 top LEC 分治 |
-| SVF | 记录 flatten 映射 |
+| 块内 ungroup | 块级 LEC 仍 R↔块网表；**变换日志** 记录 flatten |
+| 顶层保留层次 | top LEC **分治** |
+| 块已证 + blackbox | 顶层 **不展开** 块内 |
 
 见 [09 LEC](./09-logical-equivalence-checking.md)。
 
 ---
 
-## 7. 与 01–06 章关系
+## 7. 与 01–06 pass 的关系
 
-| 阶段 | 块内 | 顶层 |
-|------|------|------|
-| Elaboration | 完整 RTL | 实例化子块 **shell** |
-| 推断/映射 | 全 pass | 仅 glue |
-| 06 优化 | 块内完成 | 接口 buffer |
+| Pass | 子块 DB | 顶层 DB |
+|------|---------|---------|
+| Elaboration | 完整 RTL | shell + glue RTL |
+| 02 推断 | 全块 | 仅 glue + shell pin |
+| 03–04 | 全块 | glue（shell 已 mapped） |
+| 06 | 块内完成 | 接口 + glue |
+| STA | 块内全图 | abstract + glue 全图 |
 
 ---
 
 ## 8. 小结
 
-层次化 = **分块综合 + 抽象 + 预算 + dont_touch**；签核需 **块 LEC + 顶 LEC**。
+层次化 = **DB 分区 + timing abstract + budget + dont_touch**；签核需 **块 LEC + 顶 LEC**。
 
 ---
 
 ## 下一节
 
 - [09 LEC](./09-logical-equivalence-checking.md)
+- [05 预算/MCMM](./05-constraints-sdc.md)
 - [12 交付](./12-deliverables-and-handoff.md)
-- [05 SDC](./05-constraints-sdc.md)

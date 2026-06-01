@@ -31,20 +31,35 @@
 
 ---
 
-## 2. 版本与 Corner 一致性
+## 2. 版本、Corner 与 MCMM 一致性
 
-| 必须对齐 | 项 |
-|----------|-----|
-| `.lib` | 综合与 STA **同一 corner 集** |
-| `operating_conditions` | max/min 与 signoff 一致 |
-| RTL tag | `git sha` 写入 `release_notes.txt` |
-| 工具版本 | DC/Genus build id |
+交付包须使 PnR/STA 与综合 **同一 topology、同一 corner/mode 集**。
 
-### 输入/输出案例
+### 2.1 必须对齐项
 
-**输入**：综合用 `slow.db`，PnR 用 `typ.db`
+| 须一致 | 不一致后果 |
+|--------|------------|
+| `.lib` corner 集 | delay **系统性偏差** |
+| max/min `operating_conditions` | setup/hold **签核错位** |
+| **MCMM mode**（functional/test） | scan 路径 **未检** 或 **虚假违例** |
+| RTL git tag | 无法追溯 **哪次 compile** |
+| 工具 build id | DB 语义差异 |
 
-**输出**：STA **全面偏差** — 须 **同一 MCMM 表**。
+### 2.2 MCMM 表（概念字段）
+
+| 字段 | 含义 |
+|------|------|
+| **Mode** | functional / test → 不同 power state、clock |
+| **Corner** | slow_max / fast_min → `.lib` + voltage + temperature |
+| **Constraint view** | 该 mode 下 **生效的 SDC 子集** |
+| **Delay annotation** | 该 corner 的 cell/net 查表 |
+
+### 输入/输出案例 2.1
+
+**综合 DB**：`slow_0p90_max` + `fast_0p90_min` 闭合。  
+**PnR 后 STA**：须读 **同一对** `.lib` + **同一 mode**；若仅用 `typ` signoff → 与综合 **不可比**。
+
+详见 [05 §6 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)。
 
 ---
 
@@ -143,7 +158,7 @@ endmodule
 | 映射 | 04 |
 | 约束 | 05 |
 | 修 setup/hold | 06 |
-| 读报告 | 07 |
+| 读内部量 / 阶段诊断 | 07 |
 | 低功耗 | 08 |
 | **LEC** | **09** |
 | 分块综合 | 10 |

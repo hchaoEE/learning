@@ -67,11 +67,11 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | 2 | [02-inference.md](./02-inference.md) | **已写** | 寄存器 / Latch / RAM / 乘除 / ICG 推断 |
 | 3 | [03-optimization.md](./03-optimization.md) | **已写** | **AIG 主章**；技术无关布尔优化 |
 | 4 | [04-technology-mapping.md](./04-technology-mapping.md) | **已写** | **cut/cover**、映射算法与案例 §11 |
-| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | **已写** | SDC、时钟、IO、例外路径 |
-| 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | **已写** | 映射后 WLM/拓扑、迭代收敛 |
-| 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | **已写** | 面积/时序/约束/资源报告 |
-| 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | **已写** | UPF、ICG、多电压 |
-| 9 | [09-logical-equivalence-checking.md](./09-logical-equivalence-checking.md) | **已写** | **LEC**、Formality/Conformal |
+| 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | **已写** | **SDC → timing graph**、MCMM |
+| 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | **已写** | **STA/transform 引擎**、retiming |
+| 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | **已写** | **内部量索引** |
+| 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | **已写** | **UPF/ICG DB 语义**、多电压 |
+| 9 | [09-logical-equivalence-checking.md](./09-logical-equivalence-checking.md) | **已写** | **LEC 内部**：miter、匹配 |
 | 10 | [10-hierarchical-block-synthesis.md](./10-hierarchical-block-synthesis.md) | **已写** | 分块、预算、abstract |
 | 11 | [11-dft-and-scan.md](./11-dft-and-scan.md) | **已写** | Scan、DFT 与再收敛 |
 | 12 | [12-deliverables-and-handoff.md](./12-deliverables-and-handoff.md) | **已写** | 交付清单、签核门控 |
@@ -135,6 +135,8 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | [examples/inference_walkthrough/](./examples/inference_walkthrough/) | 02 |
 | [examples/aig_walkthrough/](./examples/aig_walkthrough/) | 03 |
 | [examples/tdo_walkthrough/](./examples/tdo_walkthrough/) | 06（§2–§5 细粒度引擎） |
+| [examples/sdc_walkthrough/](./examples/sdc_walkthrough/) | 05（timing graph / MCMM） |
+| [examples/power_walkthrough/](./examples/power_walkthrough/) | 02 §8、08（ICG / 域） |
 
 ---
 
