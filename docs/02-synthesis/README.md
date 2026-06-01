@@ -66,7 +66,7 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | 1 | [01-rtl-parsing-and-elaboration.md](./01-rtl-parsing-and-elaboration.md) | **已写** | 前端：Analyze / Elaborate / Lowering → GTECH |
 | 2 | [02-inference.md](./02-inference.md) | **已写** | 寄存器 / Latch / RAM / 乘除 / ICG 推断 |
 | 3 | [03-optimization.md](./03-optimization.md) | **已写** | **AIG 主章**；技术无关布尔优化 |
-| 4 | [04-technology-mapping.md](./04-technology-mapping.md) | **已写** | .lib、AIG/网表 → 标准单元 |
+| 4 | [04-technology-mapping.md](./04-technology-mapping.md) | **已写** | **cut/cover**、映射算法与案例 §11 |
 | 5 | [05-constraints-sdc.md](./05-constraints-sdc.md) | **已写** | SDC、时钟、IO、例外路径 |
 | 6 | [06-timing-driven-optimization.md](./06-timing-driven-optimization.md) | **已写** | 映射后 WLM/拓扑、迭代收敛 |
 | 7 | [07-synthesis-reports.md](./07-synthesis-reports.md) | **已写** | 面积/时序/约束/资源报告 |
@@ -108,6 +108,7 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | 分块综合 | [10](./10-hierarchical-block-synthesis.md) |
 | DFT/Scan | [11](./11-dft-and-scan.md) |
 | 交付什么 | [12](./12-deliverables-and-handoff.md) |
+| **Mapping 怎么做** | [04](./04-technology-mapping.md) §4–11 |
 | **Retiming** | [06 §8](./06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) |
 | 方方面面索引 | [12 §8](./12-deliverables-and-handoff.md#8-综合方方面面索引) |
 
@@ -182,6 +183,7 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | .lib、映射 | 04 |
 | 时钟/IO/例外约束 | 05 |
 | Setup/Hold、buffer | 06 |
+| **Mapping 怎么做** | [04](./04-technology-mapping.md) §4–11 |
 | **Retiming** | [06 §8](./06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) |
 | 报告 | 07 |
 | UPF、ICG | 08 |
