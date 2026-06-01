@@ -231,9 +231,21 @@ flag = 0              → PO 可接 tie-0，AIG 中 flag 锥 **被删**
 
 ## 5. 典型粗粒度 Pass
 
-### 5.1 Rewriting
+粗优化 pass 在 **同一 AIG IR** 上循环，直到 node/level 收敛或达到 effort 上限。常见顺序（与 ABC 同类）：
 
-在 **4–6 输入** 窗口内，用 **更小** 等价 AIG 替换。
+```text
+strash → rewrite → refactor → balance → (重复)
+```
+
+### 5.1 Strash（结构性哈希）
+
+**动作**：对每个 `(AND, left, right)` 三元组查 hash 表；已存在则 **复用节点**，合并 fanout。
+
+**案例** — 见 [§4.1](./03-optimization.md#输入输出案例-41--strashcomb_dupsv)、`aig_walkthrough/comb_dup.sv`。
+
+### 5.2 Rewriting
+
+**动作**：在 **4–6 输入** 窗口内，查 **NPN 等价类表**，用 **更小** 等价 AIG 替换整窗。
 
 ### 输入/输出案例 5.1 — 4 输入真值函数
 
@@ -246,7 +258,41 @@ flag = 0              → PO 可接 tie-0，AIG 中 flag 锥 **被删**
 | 面积 | 节点数 ↓ |
 | 时序（映射前） | level ↓ |
 
-### 5.2 Balancing
+### 5.3 Refactoring
+
+**动作**：与 rewrite **不同** — 将 **多个** AIG 节点 **合并** 成更大窗口再分解，打破局部最优；常降低 **depth** 或 **共享** 子表达式。
+
+```text
+rewrite：  小窗 → 查表替换（局部最优）
+refactor： 大窗 → 重新分解结构（跳出局部最优）
+```
+
+### 输入/输出案例 5.3 — 深链 refactor
+
+**输入**（链状 AND，level=6）：
+
+```text
+a─AND─AND─AND─AND─AND─AND─y
+```
+
+**refactor 后**（示意，level=3）：
+
+```text
+      AND──AND──y
+     /  \ /  \
+    AND AND  e f
+   / \
+  a b c d
+```
+
+| 指标 | 前 | 后 |
+|------|----|----|
+| level | 6 | 3 |
+| 节点 | 5 | 7（可能略增） |
+
+### 5.4 Balancing
+
+**动作**：在 **不改变布尔功能** 前提下，将链状 AND/OR **拉宽成树**，降低 level、可能增节点。
 
 **输入** — 链状 AND（深而窄）：
 
@@ -267,27 +313,33 @@ a ──AND──AND──AND──AND── y   level=4
 | level | 4 | 2 |
 | 节点数 | 3 | 3（可能 +1） |
 
-**权衡**：balance 常 **增节点、减 depth** — 与 5.1 rewrite **相反方向**，工具按 **面积/时序权重** 折中。
+**权衡**：balance 常 **增节点、减 depth** — 与 rewrite **相反方向**，引擎按 **面积/level 权重** 折中。
 
-### 5.3 常量 / 冗余
+### 5.5 常量 / 冗余 / DCE
 
-见 **§4.2**；另：**死 PO**（无 fanout）整锥删除。
+**动作**：
 
-### 5.4 算术边界
+1. 常量传播：PI 或 FF 输出已知 → 子锥折叠  
+2. 死 PO：无 fanout 的锥 **整段删除**  
+3. 见 **§4.2** strash 后的 0/1 锥消除  
 
-**输入**：`set_dont_touch [get_cells u_mult]`
+### 5.6 算术与宏边界
 
-**输出**：`u_mult` 周围组合锥仍 AIG 化；**乘法器内部** 不拆。
+**动作**：带 `dont_touch` 或 `MULT`/`RAM` 标签的 instance **不进入** AIG 拆解；仅其 **端口组合锥** 布尔化。
 
-### 输入/输出案例 5.5 — 整模块优化前后（示意数据）
+### 输入/输出案例 5.6
+
+**DB 属性**：`u_mult.dont_touch = true`
+
+**内部**：`u_mult` 周围组合锥仍 AIG 化；**乘法器内部** 不拆成 AND 阵列。
+
+### 输入/输出案例 5.7 — 整模块优化前后（示意）
 
 | 指标 | Elaborate 后 | 粗优化后 |
 |------|----------------|----------|
 | AIG nodes | 12,000 | 8,500 |
 | AIG level | 18 | 14 |
 | GTECH_MUX | 200 | 0（已布尔化） |
-
-*数值为教学示意；请以实际 `compile` 日志为准。*
 
 ---
 
@@ -435,26 +487,29 @@ AIG 中 **一个** 2-input AND 节点即可；映射时 **一个** `ND2` 或 `AN
 | 黑盒 SRAM | 无组合锥 |
 | 纯寄存器打拍 | 无组合逻辑 |
 
-### 案例 H：工具里怎么「看见」粗优化（DC 概念）
+### 案例 H：粗优化在 DB 上的「指纹」
 
-```tcl
-compile_ultra -no_autoungroup
-# 或分段：
-compile -stage logic_opt
-report_qor    ;# 面积/时序摘要变化
-```
+| 内部量 | 粗优化前 | 粗优化后 | 含义 |
+|--------|----------|----------|------|
+| AIG node count | 12k | 8.5k | strash/rewrite 生效 |
+| AIG max level | 18 | 14 | balance/refactor 生效 |
+| GTECH_MUX 实例 | 200 | 0 | 已布尔化进 AIG |
+| 映射前 area 估计 | — | ↓ | 尚未 bind 单元，但结构已瘦 |
 
-| 输入 | 输出 |
-|------|------|
-| `compile` 前后 QoR | Cell count、Area 在 **映射前** 已有变化 → 含 03 效果 |
+→ 索引见 [07 章](./07-synthesis-reports.md#2-用内部量判断还在哪一阶段)。
 
 ---
 
-## 12. 动手练习
+## 12. 案例自测（内部对照）
 
-1. 综合 `examples/aig_walkthrough/comb_dup.sv`，对照 **案例 B** 看 strash。  
-2. 将 `comb_mux.sv` 中 `unique case` 改为 `if/else`，对比 AIG 节点（部分工具会有差异）。  
-3. 对 `reg_comb_boundary.sv` 在 schematic 中确认 **加法器未拆成与门阵列**。
+对照 `examples/aig_walkthrough/`，在纸上追踪 **IR 变化**（无需跑工具）：
+
+| 文件 | 应观察到 |
+|------|----------|
+| `comb_dup.sv` | strash 后 AND 节点 **减半**（§4.1） |
+| `comb_const.sv` | 常量传播后子锥 **折叠为 tie**（§4.2） |
+| `comb_mux.sv` | MUX lowering 为 AND+OR 结构（§3.1） |
+| `reg_comb_boundary.sv` | 加法器保持 **算术壳**，不进 AIG 拆解（§3.3） |
 
 ---
 

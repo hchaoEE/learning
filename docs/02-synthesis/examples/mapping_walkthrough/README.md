@@ -1,31 +1,48 @@
-# 工艺映射 walkthrough
+# 工艺映射 walkthrough — 内部 cover 对照
 
-与 [04-technology-mapping.md](../../04-technology-mapping.md) **§11 案例集锦** 对应。
+与 [04 章 §11](../04-technology-mapping.md#11-案例集锦逐步理解-mapping) 对应。
 
-| 文件 | 主题 |
-|------|------|
-| `map_and_or.sv` | 与或非 → ND2/INVX |
-| `map_mux.sv` | MUX 映射 |
-| `map_xor_chain.sv` | XOR 链 |
+| 文件 | 主题 | 映射关注点 |
+|------|------|------------|
+| `map_and_or.sv` | `(a&b)\|c` | cut 选 2 级 ND2 vs 单 OAI |
+| `map_mux.sv` | 2:1 MUX | 库 MUX2 vs NAND 分解 |
+| `map_xor_chain.sv` | XOR 链 | K=4 分级 vs K=6 单门 |
 
-## Yosys + ABC 映射（可复现组合映射）
+---
 
-```bash
-yosys -p "read_verilog map_and_or.sv; hierarchy -top map_and_or; proc; opt;
-  abc -g AND -K 6;
-  write_verilog map_and_or_mapped.v"
-```
+## 案例 A — map_and_or.sv
 
-对比 `map_and_or_mapped.v` 中单元名与文档 **案例 A**。
+**AIG 节点**：`n = OR(AND(a,b), c)`
 
-## DC 概念
+| cut 方案 | cover（示意） | 单元数 |
+|----------|---------------|--------|
+| 小 cut 分级 | ND2 + OR2 | 2 |
+| 大 cut + OAI | OAI21（吸收 inv） | 1 |
 
-```tcl
-read_verilog map_and_or.sv
-elaborate map_and_or
-link
-set_target_library slow.db
-compile -map_effort medium
-write -format verilog -output map_and_or.mapped.v
-report_reference
-```
+**delay 模式**：倾向 **单 OAI**；**area 模式**：倾向 **双 ND2**。
+
+---
+
+## 案例 B — map_mux.sv
+
+**GTECH MUX** → 映射器查菜单：
+
+- 有 `MUX2D1` → 1 单元  
+- 无 MUX → 4× NAND 或 AND/OR 网（§5）
+
+---
+
+## 案例 C — map_xor_chain.sv（K 对比）
+
+5 输入 XOR 锥：
+
+| K | 内部结果 |
+|---|----------|
+| 4 | 至少 **2 级** 标准门 |
+| 6 | 可能 **1 个** 复杂 XOR/AOI cover |
+
+---
+
+## 与 06 分界
+
+本目录只到 **初映射**；`ND2D1→ND2D4` 属 [06 tdo_walkthrough](../tdo_walkthrough/)。

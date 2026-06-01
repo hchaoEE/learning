@@ -100,6 +100,20 @@ RTL（Reference R）
 
 **内部**：识别 **async reset arc** 为 compare point 约束的一部分，而非仅比 D→Q 组合锥。
 
+### 输入/输出案例 4.2 — 时序 miter 展开（复位）
+
+**R 与 I** 各 1 FF，async reset active-low。
+
+**内部**（sequential miter 前几周期）：
+
+```text
+Cycle 0: rst_n=0 → 要求 R.q=0 且 I.Q=0
+Cycle 1: rst_n=1, d=1 → 要求 Q 均为 1
+Cycle 2+: 数据路径 XOR 判差
+```
+
+若 I 的 `.RN` 极性接反 → **Cycle 0** diff=1 → **counter-example 立得**。
+
 ---
 
 ## 5. 求解引擎（概念）

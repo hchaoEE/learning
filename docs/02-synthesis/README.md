@@ -73,7 +73,7 @@ ASIC **标准单元逻辑综合**：以综合器 **内部 IR 与 pass 顺序** �
 | 8 | [08-low-power-synthesis.md](./08-low-power-synthesis.md) | **已写** | **UPF/ICG DB 语义**、多电压 |
 | 9 | [09-logical-equivalence-checking.md](./09-logical-equivalence-checking.md) | **已写** | **LEC 内部**：miter、匹配 |
 | 10 | [10-hierarchical-block-synthesis.md](./10-hierarchical-block-synthesis.md) | **已写** | 分块、预算、abstract |
-| 11 | [11-dft-and-scan.md](./11-dft-and-scan.md) | **已写** | Scan、DFT 与再收敛 |
+| 11 | [11-dft-and-scan.md](./11-dft-and-scan.md) | **已写** | **Scan IR 变换** |
 | 12 | [12-deliverables-and-handoff.md](./12-deliverables-and-handoff.md) | **已写** | 交付清单、签核门控 |
 
 ---

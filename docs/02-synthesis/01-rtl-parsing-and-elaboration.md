@@ -783,46 +783,45 @@ flowchart TB
 | 层次名不对 | `hdlin_enable_hier_naming`、generate 标签 |
 | 与仿真不一致 | X、NBA 顺序、仿真专用块未被 `ifdef` 剔除 |
 
-**查看内部网表**（辅助手段，非本章重点）：
+**查看内部网表**（调试动作为 **导出 DB 快照**，便于与本文案例对照）：
 
-```tcl
-# DC：仅作阶段检查示例
-compile -stage elaborate
-report_cell -connections
-write -format verilog -hierarchy -output post_elab.v
-```
+| 动作 | 得到什么 |
+|------|----------|
+| 导出 post-elab Verilog | GTECH 节点名、层次、连接 |
+| 导出 hierarchy 列表 | instance 路径 ↔ generate 展开 |
+| 运行 check_design | 多驱动、浮空、环 |
 
 ### 输入/输出案例（导出对照）
 
-```tcl
-remove_design -all
-analyze -format sverilog -f $env(WALKTHROUGH_F)   ;# child.sv + top.sv
-elaborate top -parameters "N=2,W=8"
-report_hierarchy -full > hier.rpt
-check_design > check.rpt
-write -format verilog -hierarchy -output top_elab_gtech.v
+**输入**：`elab_walkthrough/top.sv` + `child.sv`，`N=2,W=8`
+
+**DB 快照（示意）**：
+
+```text
+Instance tree:
+  top
+    g_slice[0].u_child
+    g_slice[1].u_child
+GTECH: GTECH_MUX on data_out（若 else 未补全 → 可能 LATCH 警告）
+check_design: ERROR if sum 双驱动未修
 ```
 
-| 命令 | 输入 | 输出文件 |
-|------|------|----------|
-| `analyze` | .sv + define | logical library |
-| `elaborate` | 顶层名、参数 | Design DB / 可选 `.ddc` |
-| `report_hierarchy` | Design DB | `hier.rpt` |
-| `write` | Design DB | `top_elab_gtech.v` |
+→ 逐步案例见 [elab_walkthrough/](./examples/elab_walkthrough/)。
 
 ---
 
-## 16. 附录：命令与内部阶段对照（简表）
+## 16. 附录：前端阶段 ↔ 内部产物
 
-| 命令（DC） | 内部主要效果 |
-|------------|----------------|
-| `analyze` | AST → logical library |
-| `elaborate` | 实例树 + lowering → GTECH in Design DB |
-| `link` | ref 绑定 |
-| `check_design` | DB 一致性扫描 |
-| `compile` | GTECH → .lib 单元 + 优化 |
+| 阶段 | 输入 | 输出（Design DB） |
+|------|------|-------------------|
+| Preprocess | 源文本 + define | 展开后源 |
+| Parse | 源 | AST per module |
+| Elaborate | AST + top 参数 | 实例树 + 连接 |
+| Lowering | RTL 行为 | GTECH 节点 + SEQGEN |
+| Link | ref 名 | 绑定 module 定义 |
+| check_design | DB | 违例/警告列表 |
 
-Genus：`read_hdl` ≈ analyze；`elaborate` 同上。
+**调试原则**：先查 **DB 对象是否存在**（instance/pin/net），再查 **GTECH 形态**；见 §15。
 
 ---
 

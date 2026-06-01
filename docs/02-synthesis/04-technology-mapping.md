@@ -127,6 +127,34 @@ flowchart TB
 
 **工具选**：delay 模式可能选 **单单元 3-input**；area 模式可能选 **两个 2-input ND2**（更小面积）。
 
+### 4.5 全局 DP（流程型映射）
+
+步骤 5 的 **全局 DP** 指：按拓扑序（PI→PO）为每个 AIG 节点 `n` 记录 **最优 (cost, cover)**：
+
+```text
+cost(n) = min over cuts C of:
+            area/delay(cover_C)
+          + sum_{f in fanin(C)} cost(f)
+```
+
+**动作**：
+
+1. 子节点先定最优 → 父节点 cut 的 fanin **代价已知**  
+2. 枚举 cut 时累加 **子树 cost + 本 cover cost**  
+3. 回溯得到 **整图最小 cost 映射**
+
+### 输入/输出案例 4.5 — 两节点共享 fanin
+
+```text
+      a ──┐
+      b ──┼── t ──┬── n1
+            └── t ──┴── n2
+```
+
+**DP**：`t` 的最优 cover **只算一次**；`n1`、`n2` 共享子结果 → 避免重复映射 `t`。
+
+---
+
 ---
 
 ### 4.2 真值表与 NPN 等价
@@ -354,44 +382,44 @@ yosys -p "read_verilog map_and_or.sv; hierarchy; proc; opt; abc -g AND -K 6; wri
 
 ---
 
-## 9. 约束如何改变 mapping
+## 9. 约束如何改变 mapping（内部）
 
-| SDC / 命令 | 映射影响 |
-|------------|----------|
-| `create_clock -period 1.0` | 倾向 **短 delay cover** |
-| `set_max_area 0` | 倾向 **小面积 cover** |
-| `set_dont_use` | 缩小菜单 |
-| `set_max_transition` | 影响 **驱动强度** 初值 |
+SDC 编译进 timing graph 后，**04 的 cut cost** 读取 **AT / required** 与 **面积权重**：
 
-映射用 **WLM** 估 net 延时；**06 + PT** 用真实寄生。
+| 约束语义（05 章） | 映射 cost 内部变化 |
+|-------------------|---------------------|
+| 更紧 clock period | β·delay 权重 ↑ → 选 **浅 cover / 大驱动** |
+| max_area 策略 | α·area 权重 ↑ → 选 **小 cover / 多级 ND2** |
+| dont_use 单元集 | cover 搜索空间 **删边** |
+| max_transition limit | 初映射倾向 **更强驱动** cover |
 
-### 输入/输出案例
+映射用 **WLM** 估 net delay；**06** 用同一图上的 slack 再修。
 
-**输入**：周期 0.5ns 极紧
+### 输入/输出案例 9.1 — 周期收紧
 
-**输出**：映射报告 **critical path** 上多用 **LVT、大驱动、浅 cover**。
+**内部**：period 1.0→0.5 ns，同一 AIG 上 cut 选择从「双 ND2」变为「单 OAI222」→ mapped **area ↑、level ↓**。
+
+### 输入/输出案例 9.2 — dont_use 导致无 cover
+
+**内部**：库禁 `OAI*` 且 K=4 → 5 输入锥 **无合法 cover** → mapper **报错或降级** 为多级 ND2（area↑）。
 
 ---
 
-## 10. 映射质量怎么查
+## 10. 映射完成度：内部检查项
 
-```tcl
-report_reference -hierarchy
-report_cell -connections
-report_timing -max_paths 5   # 映射后初版 STA
-```
+映射 pass 结束时，DB 应满足：
 
-| 报告 | 看什么 |
-|------|--------|
-| `reference` | 是否出现 **非库** 原语（不应有 GTECH） |
-| `cell` | 意外 `LAT`、`XL` |
-| `timing` | 映射后 WNS 是否仍崩（需 06） |
+| 检查项 | 通过标准 | 失败含义 |
+|--------|----------|----------|
+| 无 GTECH 组合 | 组合锥仅 **库单元** | mapping **未完成** |
+| SEQ 已 bind | DFF/LATCH 为 `.lib` 名 | 时序元件映射漏跑 |
+| 黑盒/宏 | `dont_touch` 仍在 | 正常 |
+| 初版 WNS | 可负 | 预期交给 **06** |
 
-### 输入/输出案例
+### 输入/输出案例 10.1
 
-**失败**：网表含 `GTECH_MUX` → mapping **未完成**
-
-**成功**：仅 `library cell` 名。
+**失败 DB**：仍含 `GTECH_MUX` → 04 pass **未覆盖** 该锥。  
+**成功 DB**：组合仅 `ND2D1`、`INVX1` 等；timing graph 已可 **标注 cell arc**。
 
 ---
 
@@ -454,11 +482,17 @@ report_timing -max_paths 5   # 映射后初版 STA
 
 ---
 
-## 12. 动手练习
+## 12. 案例自测（内部对照）
 
-1. 用 `examples/mapping_walkthrough/` + Yosys `abc -K 4` 与 `-K 6` 对比 `out.v` 单元数。  
-2. DC：`compile` 前后 `report_reference` 对比 GTECH → `ND2`。  
-3. 对 `map_mux.sv` 查库是否有 `MUX2`，观察映射用 MUX 还是 NAND 网。
+对照 `examples/mapping_walkthrough/`，追踪 **AIG → cover → 单元**：
+
+| 文件 | 应观察到 |
+|------|----------|
+| `map_and_or.sv` | `(a&b)|c` → 2–4 单元；INV 边可能 **吸收进 OAI**（案例 D） |
+| `map_mux.sv` | MUX cover vs NAND 分解（§5） |
+| `map_xor_chain.sv` | XOR 链：K=4 时分级；K=6 时可能 **单复杂门**（案例 B） |
+
+**K 对比**（同一 AIG）：K=4 → 更多 **ND2 级联**；K=6 → 更少级、可能更大单单元。
 
 ---
 

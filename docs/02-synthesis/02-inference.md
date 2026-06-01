@@ -56,7 +56,7 @@ GTECH 网表（elab / compile 早期）
 |------|------|
 | **结构模式** | 如「MUX 反馈到自身 + 使能」→ latch |
 | **过程语义回溯** | 保留 RTL 属性 `rtl_always_style` 等（工具私有） |
-| **用户约束** | `set_register_type`、`compile_register_for_memory`、`dont_use` |
+| **用户/策略约束** | 指定寄存器类型、RAM 实现、禁用 latch 单元等 DB 策略 |
 | **工艺策略** | .lib 无 latch 单元 → 报错或自动改逻辑 |
 
 推断 **一般不改变功能**，但可能 **插入硬件**（如读端口寄存器、时钟门控 ICG）——属 **推断 + 实现选择**，需在报告中可见。
@@ -181,8 +181,8 @@ en ──► GTECH_MUX2 ──► q
 | 工艺库 | 推断行为 |
 |--------|----------|
 | 提供 `LH*` / `TLAT*` | 映射为 latch 单元；STA **time borrowing** |
-| **禁止 latch**（常见高性能数字块） | `set_latch_logic none` 或报错，要求 RTL 改 MUX+FF |
-| 误推断 latch | `set_compile_directives` / 改 RTL 补 `else` |
+| **禁止 latch**（常见高性能数字块） | 策略 `latch_inference=none` → **报错** 或强制 RTL 改 MUX+FF |
+| 误推断 latch | 改 RTL 补 `else`；或前端 **full_case** 语义 |
 
 ### 输入/输出案例
 
@@ -417,37 +417,49 @@ clk ──► ICG(en) ──► clk_g ──► SEQGEN×32
 
 ### 输入/输出案例
 
-**输入**：
+**DB 属性**：`u_sram_macro.dont_touch = true`
 
-```tcl
-set_dont_touch [get_cells u_sram_macro]
-```
-
-**输出**：推断仍标 `RAM`，mapping **不拆解** 为寄存器阵列。
+**内部**：推断仍标 `RAM`；mapping pass **跳过拆解**，边界 pin 直接连宏。
 
 ---
 
-## 10. 报告与调试
+## 10. 推断结果：内部可观测属性
 
-| 命令（DC 示例） | 看到的推断信息 |
-|-----------------|----------------|
-| `report_inference` / `report_memory` | RAM 深度、类型、实现 |
-| `report_latch` | 锁存器列表与 enable |
-| `report_registers` | 寄存器数量、位宽、时钟 |
-| `report_reference -hierarchy` | 是否出现 `**latch**`、`**mult**` |
+推断完成后，Design DB 上可直接查询（概念字段）：
 
-**案例 — 报告片段**（`sync_ram` 综合后）：
+| 属性 / 计数 | 含义 | 异常时 |
+|-------------|------|--------|
+| `resource_type=REGISTER` 数 | FF 总量 | 与 RTL 预期不符 → 时钟/复位写法 |
+| `resource_type=LATCH` 列表 | 锁存器 | 高性能块 **不应出现** |
+| `resource_type=RAM` + depth/width | 存储器推断 | 深度过大 → 应用宏非 register array |
+| `resource_type=MULT` + bitwidth | 乘法器 | 位宽过大 → 应绑 IP |
+| `icg_candidate` 簇 | 可门控 bank | 0 个 → enable 拓扑不满足 |
+
+### 输入/输出案例 10.1 — sync_ram 推断后 DB
+
+**RTL**：`inference_walkthrough/sync_ram.sv`
+
+**DB 快照（示意）**：
 
 ```text
-Memory          Depth    Width    Ports    Implementation
-ram             1024     32       1R1W     register array
+Memory ram: depth=1024 width=32 ports=1R1W
+  implementation_target = register_array   // 或 sram_macro（若策略绑定）
+  write_style = sync
+  read_style  = sync
 ```
 
-### 输入/输出案例
+| 字段 | 若与预期不符 |
+|------|--------------|
+| `implementation_target` | 检查宏链接 / 深度阈值策略 |
+| `ports` | 异步读 → 可能拆成 FF+MUX |
 
-| 输入 | 输出 |
-|------|------|
-| `compile` 后的 Design DB | `report_*` 文本 / 属性可查询的推断结果 |
+### 输入/输出案例 10.2 — latch_infer
+
+**RTL**：`latch_infer.sv`（组合缺 else）
+
+**DB**：`resource_type=LATCH` 出现在 `u_latch`；**无** `SEQGEN(FF)` 替代。
+
+→ 索引 [07 §1](./07-synthesis-reports.md#1-内部量--章节--pass-阶段) `LATCH 计数`。
 
 ---
 
@@ -465,7 +477,7 @@ ram             1024     32       1R1W     register array
 
 ## 12. 贯穿示例：对 walkthrough 设计做推断
 
-对 [01 章](../02-synthesis/01-rtl-parsing-and-elaboration.md) 的 `top`（`N=2`）在 **修复多驱动后** 推断预期：
+对 [01 章](./01-rtl-parsing-and-elaboration.md) 的 `top`（`N=2`）在 **修复多驱动后** 推断预期：
 
 | 模块/信号 | 推断 |
 |-----------|------|
@@ -473,13 +485,16 @@ ram             1024     32       1R1W     register array
 | `top.data_out`（补全 else 后） | 组合 MUX，无 latch |
 | `top.sum` | 若仍双驱动 | **推断前** check 失败 |
 
-```tcl
-elaborate top -parameters "N=1,W=8"   ;# 先减为单 child 避免多驱动
-compile -stage :pre_map
-report_registers
-report_latch
-report_memory
+**DB 快照（示意，单 child N=1）**：
+
+```text
+REGISTER count = 8        (child.dout)
+LATCH count    = 0
+RAM/MULT       = 0
+check_design   = clean
 ```
+
+→ 各 walkthrough RTL 的逐项 DB 字段见 [inference_walkthrough/README.md](./examples/inference_walkthrough/README.md)。
 
 ---
 

@@ -80,6 +80,19 @@ rst_n ──► reg_*/async pin   路径标记 no_check
 
 ---
 
+## 案例 E — multicycle（05 §4.2）
+
+**约束语义**：某慢路径 setup=2 周期。
+
+**内部 timing graph**：
+
+```text
+required @ capture ← 单周期 required + 1×period
+slack 变大 → 该路径不再驱动 WNS
+```
+
+---
+
 ## 阅读顺序
 
 ```text
