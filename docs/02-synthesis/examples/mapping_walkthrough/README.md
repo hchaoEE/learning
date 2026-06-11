@@ -7,6 +7,12 @@
 | `map_and_or.sv` | 与或非 → ND2/INVX |
 | `map_mux.sv` | MUX 映射 |
 | `map_xor_chain.sv` | XOR 链 |
+| `demo.genlib` | 手写门库（AOI21/OAI21），见 [04 §5.4](../../04-technology-mapping.md#54-手写-genlib--abc-map理解-cover-从哪来) |
+| `run_abc_map.sh` | AIG 导出 + `abc -g AND` 对比实验 |
+
+## AOI/OAI
+
+阅读 [04 章 §5.3](../../04-technology-mapping.md#53-aoi--oai--oa为何工艺库爱用复杂门)：`!(a&b)|c` 用 `OAI21` 单单元 vs 多级 ND2/INV。
 
 ## Yosys + ABC 映射（可复现组合映射）
 

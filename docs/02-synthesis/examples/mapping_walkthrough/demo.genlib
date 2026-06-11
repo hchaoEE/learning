@@ -1,0 +1,13 @@
+# 极简 genlib — 仅用于理解 ABC map 的 cover 选择
+# 格式: GATE <name> <inputs> <area> <function>: pins...
+
+GATE  zero  0  0.0  CONST0:  Z=CONST0
+GATE  one   0  0.0  CONST1:  Z=CONST1
+GATE  BUF   1  0.3  BUF:     A=a,    Z=z
+GATE  INV   1  0.5  INV:     A=a,    Z=z
+GATE  AND2  2  1.0  AND2:    A=a,    B=b,    Z=z
+GATE  NAND2 2  1.0  NAND2:   A=a,    B=b,    Z=z
+GATE  OR2   2  1.2  OR2:     A=a,    B=b,    Z=z
+GATE  NOR2  2  1.2  NOR2:    A=a,    B=b,    Z=z
+GATE  AOI21 3  1.4  AOI21:   A=a,    B=b,    C=c,    Z=z
+GATE  OAI21 3  1.4  OAI21:   A=a,    B=b,    C=c,    Z=z
