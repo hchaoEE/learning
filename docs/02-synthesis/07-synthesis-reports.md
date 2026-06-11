@@ -1,180 +1,90 @@
-# 2.7 综合报告解读
+# 2.7 综合阶段内部量索引
 
-`compile` 结束后，用 **报告** 判断：时序是否闭合、面积是否超标、推断是否符合预期。本章讲 **字段含义** 与 **和内部阶段的对应**，不罗列全部 Tcl 开关。
+`compile` 各阶段在 Design DB 上留下 **可观测的内部量**。本章是 **「看到什么变化 → 对应哪条 pass / 哪一章」** 的索引，**不是** 工具报告命令教程。
 
----
-
-## 1. 报告与章节映射
-
-| 报告 | 回答的问题 | 相关章节 |
-|------|------------|----------|
-| `report_timing` | setup/hold 是否满足 | 05、06 |
-| `report_constraint` | 还有哪些 DRC/时序违例 | 05、06 |
-| `report_area` | 组合/时序/网表面积 | 03、04 |
-| `report_power` | 早期功耗估算 | 08 |
-| `report_reference` | 用了哪些单元 | 04 |
-| `report_memory` / `report_latch` | 推断结果 | 02 |
-| `report_hierarchy` | 层次与实例 | 01 |
+> 时序 slack 的 **计算语义** 见 [05 SDC 内部](./05-constraints-sdc.md)、[06 细粒度引擎](./06-timing-driven-optimization.md)。  
+> 签核仍依赖 STA/LEC 等外部工具；此处只说明 **综合器内部在优化什么**。
 
 ---
 
-## 2. `report_timing`
+## 1. 内部量 ↔ 章节 ↔ pass 阶段
 
-```tcl
-report_timing -max_paths 10 -delay_type max
-report_timing -delay_type min   # hold
-```
-
-| 字段 | 含义 |
-|------|------|
-| **Slack** | 要求时间 − 到达时间；负 = 违例 |
-| **WNS** | 最差 slack（Worst Negative Slack） |
-| **TNS** | 负 slack 路径之和 |
-| **Path Group** | `clk`、`default`、`inputs` 等 |
-| **Point** | pin 级路径点：FF CLK→Q、net、cell delay |
-
-### 输入/输出案例
-
-**输入**：`report_timing` 片段
-
-```text
-Startpoint: reg_a (rising edge-triggered flip-flop)
-Endpoint:   reg_b (rising edge-triggered flip-flop)
-Path Group: clk
-slack (MET): 0.12
-```
-
-**解读**：该路径 **setup 满足**，余量 0.12ns。
-
-| 输入 | 输出 |
-|------|------|
-| WNS = -0.2 | 至少一条路径需 [06](./06-timing-driven-optimization.md) 或改约束/RTL |
+| 内部量（概念） | 典型变化时机 | 章节 | 说明 |
+|----------------|--------------|------|------|
+| GTECH 节点数 | elaboration 后、03 粗优化后 | 01、03 | 仍无 `.lib` 单元名 |
+| AIG node / level | 03 strash、rewrite、balance | 03 | 映射前布尔 IR |
+| `resource_type` 计数 | 02 推断 | 02 | REG/LATCH/RAM/MULT 标签 |
+| Mapped instance 数 | 04 cover 绑定 | 04 | 出现 `ND2D*`、`DFF*` 等 |
+| Buffer/INV 占比 | 06 插 buffer、hold 修 | 06 | 细粒度指纹 |
+| **WNS / TNS** | 04 初 STA、06 迭代 | 05、06 | timing graph 聚合 slack |
+| Hold worst slack | 06 min corner | 05 §6、06 §4 | 与 setup 可能冲突 |
+| Transition/cap 违例数 | 06 DRC 修复 | 05 §7、06 §5 | 电气 limit |
+| ICG 实例数 | 02 推断 + 08 意图 | 02 §8、08 | `CKLN*` 等 |
+| LS/ISO 实例数 | 08 UPF 标注后映射 | 08 | 跨电压边界 |
+| Compare point 数（LEC） | 09 签核 | 09 | 非 compile pass 产物 |
 
 ---
 
-## 3. `report_constraint`
+## 2. 用内部量判断「还在哪一阶段」
 
-```tcl
-report_constraint -all_violators
-```
-
-| 违例类型 | 常见原因 |
-|----------|----------|
-| `setup` | 路径太慢 |
-| `hold` | 路径太快 |
-| `max_transition` | 驱动不足 |
-| `max_capacitance` | fanout 过大 |
-| `max_fanout` | 需 buffer |
-
-### 输入/输出案例
-
-**输出**：
-
-```text
-max_transition  (12 violations)
-setup            (WNS: -0.15, 45 failing endpoints)
-```
-
-→ 先修 **setup**（影响功能频率），再修 transition。
+| 观测 | 推断阶段 | 下一步读 |
+|------|----------|----------|
+| 网表仅有 `GTECH_*` | elaboration 后、未映射 | 01、02 |
+| 有 AIG 统计、无 lib 单元 | 03 中、未 04 | 03 |
+| 出现库单元名，WNS 很粗 | 04 刚结束 | 04、05 |
+| buffer 数激增、slack 阶梯改善 | 06 迭代中 | 06 |
+| 寄存器数变、组合段变短 | 06 retiming | 06 §8 |
+| LATCH 标签存在 | 02 推断 | 02、RTL |
 
 ---
 
-## 4. `report_area`
+## 3. 违例类型 → 引擎分支（与 06 对齐）
 
-| 字段 | 含义 |
-|------|------|
-| Combinational | 组合逻辑面积 |
-| Noncombinational | 寄存器、latch |
-| Buffer / Inverter | 06 插入的缓冲占比 |
-| Macro / RAM | 硬宏 |
-
-### 输入/输出案例
-
-**输入**：插 buffer 前后两次 `report_area`
-
-**输出**：`Buffer/Inverter` 行增加 15% → 06 迭代代价可见。
+| 内部违例标签 | 根因（机制） | 引擎分支 |
+|--------------|--------------|----------|
+| `setup_violation` | 数据路径太慢（max corner） | 06 §3 sizing/buffer；§8 retiming |
+| `hold_violation` | 数据太快（min corner） | 06 §4 delay |
+| `transition_violation` | slew 超限 | 06 §5 buffer tree |
+| `cap_violation` | 负载电容超限 | 06 §5 |
+| `no_clock` | SDC 未绑 clock | 05 §2、§8 |
+| `unconstrained_path` | 例外缺失或对象未解析 | 05 §4、§8 |
 
 ---
 
-## 5. `report_reference` 与 `report_cell`
+## 4. QoR 对比（版本间）注意
 
-```tcl
-report_reference -hierarchy
-```
+对比两次 compile 内部结果时，须 **对齐**：
 
-用于确认 **04 映射** 结果：是否出现意外 `LH*`（latch）、过多 `ND2`、是否已用 **SRAM 宏**。
-
-### 输入/输出案例
-
-**输入**：期望无 latch
-
-**输出**：`report_reference` 含 `TLAT*` → 回 [02](./02-inference.md) 查 RTL。
+| 须一致 | 否则内部量不可比 |
+|--------|------------------|
+| SDC 语义（period、例外） | WNS/TNS 假变 |
+| MCMM corner 集 | setup/hold 各看不同 corner |
+| `.lib` / dont_use | 单元集变 |
+| RTL 功能 | 非同一设计 |
 
 ---
 
-## 6. 推断类报告
+## 5. 内部量与 LEC 的关系
 
-```tcl
-report_memory
-report_latch -verbose
-report_registers
-```
+| 内部量 | 含义 |
+|--------|------|
+| WNS ≥ 0 | **不保证** RTL↔网表等价 |
+| 无意外 LATCH | **不保证** LEC pass（复位/常数/X） |
+| 推断 RAM→macro | LEC 需 **memory 映射** 对齐 compare point |
 
-与 [02 章](./02-inference.md) 案例对照；用于验证 **推断 ≠ 预期** 时先改 RTL 再 `compile`。
-
-### 输入/输出案例
-
-**`report_memory` 输出**：
-
-```text
-RAM: mem  1024x32  1R1W  -> register array
-```
-
-若期望 SRAM 宏 → 检查 `set_memory_implementation` / Memory Compiler 链接。
+签核：**时序（05–07 内部量）+ [09 LEC](./09-logical-equivalence-checking.md)**。
 
 ---
 
-## 7. QoR 摘要（概念）
+## 6. 小结
 
-部分流程生成 **QoR summary**：WNS、TNS、面积、功耗、单元数 — 用于 **版本对比**（同 SDC、同 .lib）。
-
-| 指标 | 回归对比时注意 |
-|------|----------------|
-| WNS | corner 一致 |
-| Area | 是否含宏 |
-| Cell count | 粗优化前后可能剧变 |
+本章 = **compile 仪表盘索引**；深入机制读 **05（约束图）**、**06（transform）**、对应 **walkthrough**。
 
 ---
-
-## 8. 从报告反推阶段
-
-| 报告现象 | 可能阶段 |
-|----------|----------|
-| 节点数/面积骤变、无单元名 | 仍在 03 AIG |
-| 出现库单元名、WNS 粗糙 | 04 映射完成 |
-| buffer 激增、slack 改善 | 06 细优化 |
-| LATCH 列表 | 02 推断 / RTL |
-
----
-
-## 9. 小结
-
-报告是 **05/06 的仪表盘**；**setup/hold** 看 timing，**结构** 看 reference/memory，**层次** 看 hierarchy。
-
----
-
-## 10. 与 LEC 的关系
-
-| 报告 | LEC |
-|------|-----|
-| QoR 满足 | **不保证** 等价 |
-| 无 latch 意外 | 仍可能 **LEC fail**（复位/常数） |
-
-**签核**：`report_timing` clean 后必须跑 [09 LEC](./09-logical-equivalence-checking.md)。
 
 ## 下一节
 
+- [05 SDC 内部](./05-constraints-sdc.md)
+- [06 细粒度优化](./06-timing-driven-optimization.md)
 - [09 LEC](./09-logical-equivalence-checking.md)
 - [12 交付](./12-deliverables-and-handoff.md)
-- [08 低功耗](./08-low-power-synthesis.md)
-- [05 SDC](./05-constraints-sdc.md)

@@ -40,11 +40,11 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 | 2 | [02](./02-inference.md) | 资源推断 |
 | 3 | [03](./03-optimization.md) | 粗粒度 / AIG |
 | 4 | [04](./04-technology-mapping.md) | 工艺映射 |
-| 5 | [05](./05-constraints-sdc.md) | SDC |
-| 6 | [06](./06-timing-driven-optimization.md) | 细粒度 / 门级 |
-| 7 | [07](./07-synthesis-reports.md) | 读报告 |
-| 8 | [08](./08-low-power-synthesis.md) | UPF / ICG |
-| 9 | [09](./09-logical-equivalence-checking.md) | **LEC** |
+| 5 | [05](./05-constraints-sdc.md) | SDC → timing graph |
+| 6 | [06](./06-timing-driven-optimization.md) | STA/transform 引擎 |
+| 7 | [07](./07-synthesis-reports.md) | 内部量索引 |
+| 8 | [08](./08-low-power-synthesis.md) | UPF/ICG DB 语义 |
+| 9 | [09](./09-logical-equivalence-checking.md) | LEC / miter |
 | 10 | [10](./10-hierarchical-block-synthesis.md) | 分块 / 预算 |
 | 11 | [11](./11-dft-and-scan.md) | **DFT / 扫描** |
 | 12 | [12](./12-deliverables-and-handoff.md) | **交付 / 交接** |

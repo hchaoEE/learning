@@ -1,129 +1,162 @@
-# 2.8 低功耗综合
+# 2.8 低功耗综合 — Design DB 上的功耗语义
 
-ASIC 低功耗靠 **架构 + RTL + 综合 + 物理** 协同。本章讲综合侧：**UPF、时钟门控、多电压意图** 如何进入工具，与 [02 推断 ICG](./02-inference.md)、[06 细粒度](./06-timing-driven-optimization.md) 衔接。
+ASIC 低功耗靠 **架构 + RTL + 综合 + 物理** 协同。本章讲 **power intent 与 ICG 如何在 Design DB 里变成标注与额外逻辑**，与 [02 §8 ICG 推断](./02-inference.md#8-时钟门控icg推断--asic-低功耗)、[06 细粒度](./06-timing-driven-optimization.md) 衔接。
 
----
-
-## 1. 功耗组成（综合视角）
-
-| 类型 | 综合能影响的 |
-|------|----------------|
-| **动态** | 切换活动 × 电容 × V²；**ICG**、降频、减冗余 |
-| **漏电** | 单元 VT、关断域；**MV、power switch** |
+> 配套案例：[examples/power_walkthrough/](./examples/power_walkthrough/)
 
 ---
 
-## 2. UPF / CPF（Power Intent）
+## 1. 功耗组成（综合内部视角）
+
+| 类型 | DB 上可建模的量 | 综合 pass 能动的 |
+|------|-----------------|------------------|
+| **动态** | toggle rate × net cap × V² | **ICG** 降 clock toggle；删冗余逻辑（03） |
+| **漏电** | 单元 I_leak(V,T) | **VT swap**（06）；关断域（UPF→PSW） |
+
+综合阶段 **无真实 SAIF** 时常用 **默认 toggle**；数值仅 **相对比较**，非签核功耗。
+
+---
+
+## 2. UPF / CPF：Power Intent 编译层
 
 ```text
-RTL + UPF (.upf)
-      │
+RTL + UPF 文本
+      │  parse power domain / supply / strategy
       ▼
-综合读 power domain、level shifter、isolation、retention
-      │
+Power Intent Layer（附在 Design DB）
+      │  instance.power_domain
+      │  net.crossing_domain
+      │  isolation / level_shifter / retention 策略
       ▼
-映射时插入 **LS/ISO/PSW** 单元（与 .lib 一致）
+04 映射：在 cut point 插入 LS / ISO / retention cell
+06 时序：LS/ISO arc 进入 timing graph
 ```
 
-| UPF 概念 | 作用 |
-|----------|------|
-| `create_power_domain` | 电压域划分 |
-| `create_supply_net` | 供电网络 |
-| `set_isolation` | 关断时隔离输出 |
-| `set_level_shifter` | 跨电压传数据 |
-| `set_retention` | 低功耗保持寄存器状态 |
+| UPF 语义 | DB 内部 |
+|----------|---------|
+| `create_power_domain` | instance 集 + **primary supply** 引用 |
+| `set_isolation` | 域边界 net 上 **isolation enable** 策略 |
+| `set_level_shifter` | 跨电压 net 上 **LS 规则**（升/降、位置） |
+| `set_retention` | 指定 FF 组 → **retention register** 替换标签 |
+| `set_power_switch` | 域与 **header/footer switch** 网络关联 |
 
-### 输入/输出案例
+**无 UPF**：综合器 **不知域边界** → 无法自动插 LS/ISO，仅能靠 **同电压 .lib** 做普通映射。
 
-**输入**：CPU 核 `PD_CPU` 可关断；外围 `PD_ALWAYS_ON`
+### 输入/输出案例 2.1
 
-**输出**：综合网表含 **isolation cell** 于域边界；报告 `report_power_domain`。
+**意图**：`PD_CPU` @ 0.9V，`PD_IO` @ 1.0V，CPU→IO 数据 net 跨域。
 
-| 输入 | 输出 |
-|------|------|
-| RTL 无 UPF、但要 MV | 工具不知域边界 → **不可自动插 LS** |
+**DB 标注**：该 net `crossing_domain = {PD_CPU, PD_IO}`，策略 `level_shifter = both`。
 
----
-
-## 3. 时钟门控（ICG）
-
-| 方式 | 章节 |
-|------|------|
-| RTL 手写门控时钟 | 不推荐（毛刺） |
-| **综合推断 ICG** | [02 §8](./02-inference.md) |
-| `compile_clock_gating` | 本章 |
-
-推断条件（概念）：寄存器 **共享 enable**、enable 与 clock **同步**、满足最小 bit 宽度策略。
-
-### 输入/输出案例
-
-**输入**：32 位总线共用一个 `en`，`compile_clock_gating -global` 开启
-
-**输出**：网表 `CKLNQD` 在 clock 树分支；**动态功耗** 报告 clock network 占比下降。
+**04 映射后网表**：边界插入 `LEVEL_SHIFTER` 实例；timing graph 增加 **LS arc delay**。
 
 ---
 
-## 4. 多电压与 MCMM
+## 3. 时钟门控（ICG）— 与 02 推断的衔接
 
-```tcl
-set_operating_conditions -max slow_0p9 -min fast_0p9
-# 多 corner：0p9V / 1.0V 各一套 .lib
+| 方式 | 内部 |
+|------|------|
+| RTL 手写 `clk & en` | 常 **违综合规则** 或推断为 **gated clock 结构**（毛刺风险） |
+| **综合 ICG 推断** | 在 **GTECH_SEQGEN 簇** 前插 **ICG 壳**，再映射到 `CKLN*` |
+
+### 3.1 ICG 推断算法骨架（内部）
+
+```text
+1. 按 clock 分组所有 SEQGEN（寄存器 bank）
+2. 提取共享 enable 表达式 E（同步于 clock 的 gating 条件）
+3. 若 |bank| ≥ min_bits 且 E 满足无 glitch 拓扑
+4. 创建 ICG 节点：clk_in, en → clk_out
+5. 将该 bank 的 clock pin 改接 clk_out
+6. 映射阶段 bind 到 .lib ICG cell
 ```
 
-| 项 | 说明 |
-|----|------|
-| **MCMM** | 多模式多 corner；综合在各 corner 权衡 |
-| **Level shifter** | UPF 指定策略后映射为 `LS_*` 单元 |
+| 条件 | 内部判定 |
+|------|----------|
+| enable 与 clock **同步** | 仅允许在 clock 无效沿切换 |
+| 最小位宽 | 避免 1-bit ICG 面积得不偿失 |
+| dont_touch / clock_network | 跳过已标记 network |
 
-### 输入/输出案例
+详见 [02 §8](./02-inference.md#8-时钟门控icg推断--asic-低功耗)。
 
-**输入**：0.9V 核驱动 1.0V IO，UPF 定义 `set_level_shifter -domain PD_IO`
+### 输入/输出案例 3.1
 
-**输出**：边界出现 `LEVEL_SHIFTER` 单元；STA 分 corner 报 slack。
+**RTL**：32 位 `always_ff @(posedge clk) if (en) q <= d;`
+
+**推断后 GTECH（片段）**：
+
+```text
+clk ──► [ICG shell: en] ──► clk_g ──► SEQGEN[31:0].CK
+d   ───────────────────────────────► SEQGEN[31:0].D
+```
+
+**映射后**：`CKLNQD1` + 32×`DFF`；**clock net toggle** 在 DB 活动度模型中 **按 en 概率缩放**。
 
 ---
 
-## 5.  Operand 隔离与门控（简述）
+## 4. 多电压与 MCMM（内部）
 
-| 技术 | 说明 |
-|------|------|
-| **Operand isolation** | 使能无效时，算术输入置常，减翻转 |
-| **Power gating** | 头开关关断漏电；需 UPF + 特殊单元 |
+多电压在 DB 上 = **多套 .lib delay** + **supply voltage 标签**：
 
-多在 **08 + 物理** 流程完整实现；综合阶段为 **插入与约束**。
+```text
+Corner slow_0p9：.lib @ 0.9V → cell/net delay 表 A
+Corner slow_1p0：.lib @ 1.0V → delay 表 B
+Mode functional：读 intent + 表 A/B
+Mode test：可能 **不同 power state**（域上电）
+```
+
+**06 修时序**时 LS/ISO 弧在 **各 corner** 各算 slack；关断域内 FF 可能 **无有效 clock** → 对应路径 **no_check** 或 **isolation 后静态**。
+
+### 输入/输出案例 4.1
+
+**状态**：`PD_CPU` 关断，输出经 ISO 到 `PD_ALWAYS_ON`。
+
+**内部**：ISO cell 输出 **固定策略**（clamp 0/1/keep）；跨域路径 timing **分 mode** 定义。
 
 ---
 
-## 6. `report_power`（早期）
+## 5. Operand isolation 与 power gating（内部简述）
 
-| 字段 | 可信度 |
-|------|--------|
-| Switching / Internal / Leakage | 基于 **SAIF/默认翻转率**；签核用 PrimePower 等 |
+| 技术 | DB 效果 |
+|------|---------|
+| **Operand isolation** | 使能无效时，算术输入 **tie 或 MUX 到常数** → 降内部 toggle |
+| **Power gating（PSW）** | 域内 **header switch** 单元；关断时 **逻辑与 leakage 模型切换** |
 
-### 输入/输出案例
+多在 **intent 指定 + 04 映射特殊单元**；物理 **电源网格** 在 PnR。
 
-**输入**：`report_power -hierarchy`
+---
 
-**输出**：`u_cpu` dynamic 占 70%；指导加 ICG 或降频。
+## 6. 早期功耗估计（内部量）
+
+| 内部量 | 来源 | 可信度 |
+|--------|------|--------|
+| Net toggle × cap | 默认或 SAIF 注解 | 综合：**趋势** |
+| ICG 节省 | clock network 活动度 × cap | 相对 before/after |
+| Leakage | 单元 I_leak 求和 | 依赖 VT 分布 |
+
+**不替代** PrimePower 等签核；用于 **ICG/VT 决策反馈**。
 
 ---
 
 ## 7. 与全流程关系
 
 ```text
-08 UPF/ICG ──► 04 映射（特殊单元）──► 06 时序（LS/ISO 延时）──► PnR（电源网）
+08 intent/ICG 标注 ──► 02 推断 ICG ──► 04 映射特殊单元 ──► 06 时序（LS/ISO/ICG arc）
+                                                              │
+                                                              ▼
+                                                         PnR 电源网
 ```
 
 ---
 
 ## 8. 小结
 
-低功耗 = **意图（UPF）+ ICG + MV 单元**；综合 **不替代** 架构选型和物理电源设计。
+低功耗 = **DB 上的 domain 标注 + ICG 壳 + 特殊单元映射**；综合 **不替代** 架构与物理电源设计。
 
 ---
 
 ## 下一节
 
-- [07 报告](./07-synthesis-reports.md)
-- [02 推断 ICG](./02-inference.md)
-- [03-pnr](../03-pnr/) 电源网络与物理
+- [02 §8 ICG](./02-inference.md#8-时钟门控icg推断--asic-低功耗)
+- [05 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)
+- [07 内部量](./07-synthesis-reports.md)
+- [examples/power_walkthrough/](./examples/power_walkthrough/)
