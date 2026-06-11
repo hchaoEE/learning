@@ -99,7 +99,7 @@ flowchart LR
 - [x] 02-synthesis：01 RTL 解析与 Elaboration
 - [x] 02-synthesis：02 推断
 - [x] 02-synthesis：全章（00–12，含 LEC/DFT/交付）
-- [x] 02-synthesis：**内部机制深化**（05–11 + walkthrough：sdc/tdo/power 等）
+- [x] 02-synthesis：**内部机制深化 + 审视优化**（walkthrough 齐、mini_chain 端到端）
 - [ ] 03-pnr：原理章节
 - [ ] 可运行实验脚本（Yosys/Makefile，可选）
 

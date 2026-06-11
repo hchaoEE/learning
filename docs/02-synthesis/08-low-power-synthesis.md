@@ -40,6 +40,17 @@ Power Intent Layer（附在 Design DB）
 | `set_retention` | 指定 FF 组 → **retention register** 替换标签 |
 | `set_power_switch` | 域与 **header/footer switch** 网络关联 |
 
+### 2.1 Retention 寄存器（内部）
+
+**动作**：关断域前 **save** FF 状态；上电 **restore**。
+
+```text
+PD_CPU 关断： FF → retention bank
+PD_CPU 上电： retention → FF
+```
+
+**DB**：`retention` 属性 on SEQGEN → 映射 **retention DFF** + save/restore 控制。
+
 **无 UPF**：综合器 **不知域边界** → 无法自动插 LS/ISO，仅能靠 **同电压 .lib** 做普通映射。
 
 ### 输入/输出案例 2.1
@@ -114,14 +125,37 @@ Mode test：可能 **不同 power state**（域上电）
 
 ---
 
-## 5. Operand isolation 与 power gating（内部简述）
+## 5. Operand isolation 与 power gating（内部）
 
-| 技术 | DB 效果 |
-|------|---------|
-| **Operand isolation** | 使能无效时，算术输入 **tie 或 MUX 到常数** → 降内部 toggle |
-| **Power gating（PSW）** | 域内 **header switch** 单元；关断时 **逻辑与 leakage 模型切换** |
+### 5.1 Operand isolation
 
-多在 **intent 指定 + 04 映射特殊单元**；物理 **电源网格** 在 PnR。
+**动作**：在 **算术/总线 cone 输入** 前插 **隔离 MUX/tie**，当 block enable=0 时输入 **固定常数**，减少 **内部翻转**。
+
+```text
+en=0 时：  a_iso = 0（或 keep，依策略）
+en=1 时：  a_iso = a
+         ↓
+      ADDER / MUX 树
+```
+
+| DB 标注 | 含义 |
+|---------|------|
+| `isolation_cell` on net | operand iso 已插入 |
+| `clamp_value` | 无效时 tie 0/1/keep |
+
+**与 ICG 区别**：ICG 降 **clock toggle**；operand iso 降 **datapath toggle**。
+
+### 5.2 Power gating（PSW）
+
+**动作**：UPF 指定 **可关断域** → 映射 **header/footer switch** → 关断时 **supply 断开**，漏电模型切换。
+
+### 输入/输出案例 5.1
+
+**意图**：ALU 仅在 `alu_en` 时活动 → `alu_en=0` 时 `op_a/op_b` tie 0，加法器内部 toggle **≈0**。
+
+### 输入/输出案例 5.2
+
+**意图**：`PD_CPU` 可关断 → 边界 LS/ISO + 域内 PSW；关断 mode 下域内 **timing no_check**。
 
 ---
 

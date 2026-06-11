@@ -86,14 +86,28 @@ SDI ──► FF0 ──► FF1 ──► … ──► FFk ──► SDO
 
 ---
 
-## 5. 压缩与 ATPG（结构简述）
+## 5. Scan 链序算法与压缩（内部）
+
+### 5.1 链序（启发式）
+
+```text
+1. 按 clock domain 分组 FF
+2. 排除 dont_scan / macro 内 FF
+3. 每组内平衡链长（≈5000 FF/链 示意）
+4. 连接 SI←Q→SI…→SO
+```
+
+### 输入/输出案例 5.1
+
+**100k FF，20 链**：每链 ~5k 级；**同一 clock 域** 内串链，避免跨域 shift 时序问题。
+
+### 5.2 Scan compression
 
 | 结构 | DB 效果 |
 |------|---------|
-| **Scan compression** | 链中间插 ** decompressor/compactor** → 逻辑锥增大 |
-| **LBIST/MBIST** | 存储器 **BIST 控制器** 挂宏边界 |
-
-综合输出 **链定义**（SPF/CTL 等）给 ATPG；**不改变** 功能 miter 的 R 侧，除非 post-scan LEC。
+| **decompressor** | SDI→多条虚拟链 |
+| **compactor** | 多条链→SDO |
+| 逻辑锥 | 增大 → **06 再优化** + **LEC 比对点增加** |
 
 ---
 

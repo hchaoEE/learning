@@ -100,6 +100,20 @@ RTL（Reference R）
 
 **内部**：识别 **async reset arc** 为 compare point 约束的一部分，而非仅比 D→Q 组合锥。
 
+### 输入/输出案例 4.2 — 时序 miter 展开（复位）
+
+**R 与 I** 各 1 FF，async reset active-low。
+
+**内部**（sequential miter 前几周期）：
+
+```text
+Cycle 0: rst_n=0 → 要求 R.q=0 且 I.Q=0
+Cycle 1: rst_n=1, d=1 → 要求 Q 均为 1
+Cycle 2+: 数据路径 XOR 判差
+```
+
+若 I 的 `.RN` 极性接反 → **Cycle 0** diff=1 → **counter-example 立得**。
+
 ---
 
 ## 5. 求解引擎（概念）
@@ -155,6 +169,17 @@ rst_n=0, d=1, clk edge … → R.q=0, I.Q=1  → diff=1 → 不等价
 ```
 
 常因 **reset 极性** 或 **scan 模式 pin** 未约束。
+
+### 输入/输出案例 7.2 — 黑盒 miter 截断
+
+```text
+R: SRAM 行为模型（RTL）     I: SRAM 硬宏 .lib 黑盒
+        │                           │
+        └──── compare 边界 pin ─────┘
+              （不展开宏内部）
+```
+
+**失败**：R 展开数组读逻辑，I 仅 **pin 级黑盒** → miter 输入维数不一致 → 须 **两侧同黑盒 + timing model**。
 
 ---
 

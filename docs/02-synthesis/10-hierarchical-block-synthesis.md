@@ -64,6 +64,27 @@ Top DB:     实例 A_shell, B_shell + top RTL glue
 
 **06 在顶层**：仅能对 **top 胶水 net** sizing，**不能** upsize `cpu_core` 内 `ND2`。
 
+### 3.2 Abstract 模型字段（ETM/ILM 概念）
+
+| 字段 | 含义 | 顶层 STA 用法 |
+|------|------|---------------|
+| `max_delay` | 块内到边界 pin 的最坏组合 delay | 约束 **外部→pin** 路径 |
+| `min_delay` | 最快路径 | hold 检查 |
+| `drive_resistance` | 输出驱动强度 | 负载估算 |
+| `load_cap` | 输入电容 | 外部 net 负载 |
+| `clock_latency` | 边界 clock 相对 ideal 偏移 | 与 CTS 预算对齐 |
+
+### 输入/输出案例 3.2
+
+**Abstract 片段（示意）**：
+
+```text
+cpu_core/inst_data[31:0]  input  max_delay=0.35ns  cap=0.02pF
+cpu_core/result[31:0]     output drive=0.1ohm     max_delay=0.28ns
+```
+
+顶层 **不展开** `cpu_core` 内 50 万门，仅读上表弧。
+
 ---
 
 ## 4. 接口时序预算（Budget）传播
