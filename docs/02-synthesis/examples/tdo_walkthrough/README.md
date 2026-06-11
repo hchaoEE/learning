@@ -1,6 +1,6 @@
 # 细粒度优化（TDO）walkthrough
 
-与 [06 章](../06-timing-driven-optimization.md) **§2–§5** 对照。本目录只提供 **RTL + 内部 IR/delay/slack 示意**，不包含工具 flow 脚本。
+与 [06 章](../../06-timing-driven-optimization.md) **§2–§5** 对照。本目录只提供 **RTL + 内部 IR/delay/slack 示意**，不包含工具 flow 脚本。
 
 ## 文件
 
@@ -16,34 +16,33 @@
 ### 1. RTL → 映射网表（片段）
 
 ```text
-a ──┐
-b ──┼── ND2 ── ND2 ── ND2 ── ND2 ── ND2 ── DFF/D
-c ──┤   u1     u2     u3     u4     u5
-d ──┤
-e ──┘
+reg_a/Q ──► ND2 ── ND2 ── ND2 ── ND2 ── ND2 ──► reg_q/D
+b ──────────┘u1   c┘u2   d┘u3   e┘u4   f┘u5
 ```
+
+launch FF `reg_a` → 5 级 AND 链（u1–u5，侧输入 b–f）→ capture FF `reg_q`。
 
 ### 2. 内部 delay 表（示意，period = 1.0 ns，slow max）
 
 | 弧 ID | 从 → 到 | delay (ns) |
 |-------|---------|------------|
-| A0 | clk → reg_q/CK | 0.00 (ideal) |
-| A1 | reg_q/Q → u1/A | 0.00 |
+| A0 | clk → reg_a/CK | 0.00 (ideal) |
+| A1 | reg_a CLK→Q | 0.12 |
 | A2–A6 | 每级 ND2D1 | 0.18 × 5 = 0.90 |
 | A7 | u5/Z → reg_q/D | 0.00 |
 | — | reg_q setup | 0.08 required |
 
 **Arrival @ reg_q/D** ≈ 0.12 (CLK→Q) + 0.90 = **1.02 ns**  
 **Required** ≈ 1.00 − 0.08 = **0.92 ns**  
-**slack_setup** ≈ **−0.10 ns**（违例）
+**slack_setup** ≈ **−0.10 ns**（违例，与 06 §2.1 案例一致）
 
 ### 3. Transform 序列（引擎内部日志风格）
 
 | 轮次 | Transform | 变更 | 新 WNS |
 |------|-----------|------|--------|
 | 0 | — | 初态 ND2D1×5 | −0.10 |
-| 1 | upsize | u2,u3,u4 → ND2D4 | −0.02 |
-| 2 | upsize | u1,u5 → ND2D2 | +0.04 |
+| 1 | upsize | u2,u3 → ND2D4（各 −0.04） | −0.02 |
+| 2 | upsize | u5 → ND2D4（−0.04） | +0.02 |
 
 ### 4. 与 03/04 的分界
 

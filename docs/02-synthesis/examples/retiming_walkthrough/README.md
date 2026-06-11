@@ -1,6 +1,6 @@
 # Retiming walkthrough — 内部 timing graph 对照
 
-与 [06 章 §8 Retiming](../06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) 对照。
+与 [06 章 §8 Retiming](../../06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) 对照。
 
 | 文件 | 说明 |
 |------|------|

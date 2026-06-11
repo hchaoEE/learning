@@ -12,23 +12,30 @@
 
 ## 案例 A — preprocess_demo.sv（§3）
 
-**RTL（含宏）**：
+> `preprocess_demo.sv` 是 **预处理片段**（非完整 module，不可单独综合），演示条件编译。
+
+**RTL（含条件编译，即文件内容）**：
 
 ```systemverilog
-`define ADD(x,y) ((x)+(y))
-wire [7:0] t = `ADD(a, b);
+`ifdef SYNTHESIS
+    assign active_path = in_a & in_b;
+`else
+    initial $display("sim only");
+    wire sim_only;
+`endif
 ```
 
-**预处理后字符流（示意）**：
+**预处理后字符流（定义了 `SYNTHESIS` 时）**：
 
 ```systemverilog
-wire [7:0] t = ((a)+(b));
+assign active_path = in_a & in_b;
 ```
 
-| 阶段 | DB 变化 |
-|------|---------|
-| 预处理前 | 源文件含 `` `define `` |
-| 预处理后 | 宏已展开，**logical library 存展开后 AST** |
+| 阶段（前 → 后） | 内容 |
+|------------------|------|
+| 预处理前 | 源文件含 `` `ifdef ``，仿真/综合两个分支并存 |
+| 预处理后 | 仅保留 `SYNTHESIS` 分支；`initial`/`$display` **不进入** 后续词法分析 |
+| 同理：`` `define `` 宏 | 在此阶段文本展开，**logical library 存展开后 AST** |
 
 ---
 

@@ -1,6 +1,6 @@
 # SDC / 时序图 walkthrough
 
-与 [05 章](../05-constraints-sdc.md) 对照。展示 **约束 → Timing Graph 内部状态**，非 SDC 脚本大全。
+与 [05 章](../../05-constraints-sdc.md) 对照。展示 **约束 → Timing Graph 内部状态**，非 SDC 脚本大全。
 
 ## 文件
 
@@ -11,6 +11,14 @@
 ---
 
 ## 案例 A — 时钟与 setup check（05 §2）
+
+### 前后对比（约束读入前 → 后）
+
+| 前（mapped 网表，无 SDC） | 后（读入 `create_clock -period 1.0` 后） |
+|----------------------------|-------------------------------------------|
+| timing graph 仅有 cell/net 弧，**无 check** | `clk` 成为 clock 对象，FF/CK 挂传播边 |
+| 路径无 required，WNS 无定义 | `reg_out/D` 上出现 setup/hold check，required=0.92 |
+| compile 退化为纯结构映射 | 04/06 的 cost/slack 全部生效 |
 
 ### 拓扑
 

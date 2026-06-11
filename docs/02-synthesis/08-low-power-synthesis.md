@@ -1,6 +1,6 @@
 # 2.8 低功耗综合 — Design DB 上的功耗语义
 
-ASIC 低功耗靠 **架构 + RTL + 综合 + 物理** 协同。本章讲 **power intent 与 ICG 如何在 Design DB 里变成标注与额外逻辑**，与 [02 §8 ICG 推断](./02-inference.md#8-时钟门控icg推断--asic-低功耗)、[06 细粒度](./06-timing-driven-optimization.md) 衔接。
+ASIC 低功耗靠 **架构 + RTL + 综合 + 物理** 协同。本章讲 **power intent 与 ICG 如何在 Design DB 里变成标注与额外逻辑**，与 [02 §9 ICG 推断](./02-inference.md#9-时钟门控icg推断--asic-低功耗)、[06 细粒度](./06-timing-driven-optimization.md) 衔接。
 
 > 配套案例：[examples/power_walkthrough/](./examples/power_walkthrough/)
 
@@ -70,37 +70,25 @@ PD_CPU 上电： retention → FF
 | RTL 手写 `clk & en` | 常 **违综合规则** 或推断为 **gated clock 结构**（毛刺风险） |
 | **综合 ICG 推断** | 在 **GTECH_SEQGEN 簇** 前插 **ICG 壳**，再映射到 `CKLN*` |
 
-### 3.1 ICG 推断算法骨架（内部）
+ICG 的 **推断算法骨架与识别条件**（bank 分组、min_bits、enable 同步性）是 02 的内容，见 [02 §9](./02-inference.md#9-时钟门控icg推断--asic-低功耗)。本章只看 **08 增加的三层语义**：
 
-```text
-1. 按 clock 分组所有 SEQGEN（寄存器 bank）
-2. 提取共享 enable 表达式 E（同步于 clock 的 gating 条件）
-3. 若 |bank| ≥ min_bits 且 E 满足无 glitch 拓扑
-4. 创建 ICG 节点：clk_in, en → clk_out
-5. 将该 bank 的 clock pin 改接 clk_out
-6. 映射阶段 bind 到 .lib ICG cell
-```
+| 层 | 08 视角 |
+|----|---------|
+| **策略覆盖** | 功耗策略 / UPF 流程可对指定 instance **强制 gating 或禁止 gating**（`force` / `no_gating` 类属性），**覆盖** 02 的启发式判定 |
+| **映射 / 时序** | ICG 壳 → `.lib` 时钟门控单元（`CKLN*` 等），属 clock network cell；`en → clk_out` 的 **gating check**（enable 的 setup/hold）作为时序弧进入 06 的 timing graph |
+| **功耗模型** | clock net toggle 在 DB 活动度模型中 **按 en 概率缩放** → 进入 §6 早期估计 |
 
-| 条件 | 内部判定 |
-|------|----------|
-| enable 与 clock **同步** | 仅允许在 clock 无效沿切换 |
-| 最小位宽 | 避免 1-bit ICG 面积得不偿失 |
-| dont_touch / clock_network | 跳过已标记 network |
+### 输入/输出案例 3.1 — 推断之后，08 看到什么
 
-详见 [02 §8](./02-inference.md#8-时钟门控icg推断--asic-低功耗)。
+**输入**：02 已对 32 位 bank 插好 ICG 壳（RTL 与推断过程见 [02 §9 案例](./02-inference.md#9-时钟门控icg推断--asic-低功耗)、`power_walkthrough/icg_bank.sv`）。
 
-### 输入/输出案例 3.1
+**输出（08/04/06 侧 DB 变化）**：
 
-**RTL**：32 位 `always_ff @(posedge clk) if (en) q <= d;`
-
-**推断后 GTECH（片段）**：
-
-```text
-clk ──► [ICG shell: en] ──► clk_g ──► SEQGEN[31:0].CK
-d   ───────────────────────────────► SEQGEN[31:0].D
-```
-
-**映射后**：`CKLNQD1` + 32×`DFF`；**clock net toggle** 在 DB 活动度模型中 **按 en 概率缩放**。
+| 维度 | 变化 |
+|------|------|
+| 映射 | 壳 → `CKLNQD1` 实例（clock network，默认 dont_touch） |
+| timing graph | 新增 `en → CKLNQD1` gating check 弧 |
+| 活动度 | `clk_g` toggle = clk toggle × P(en) |
 
 ---
 
@@ -190,7 +178,7 @@ en=1 时：  a_iso = a
 
 ## 下一节
 
-- [02 §8 ICG](./02-inference.md#8-时钟门控icg推断--asic-低功耗)
+- [02 §9 ICG](./02-inference.md#9-时钟门控icg推断--asic-低功耗)
 - [05 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)
 - [07 内部量](./07-synthesis-reports.md)
 - [examples/power_walkthrough/](./examples/power_walkthrough/)

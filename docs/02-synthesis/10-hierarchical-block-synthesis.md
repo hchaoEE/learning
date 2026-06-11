@@ -133,9 +133,40 @@ T_top = 2.0 ns
 
 ---
 
-## 6. ungroup 与 LEC
+## 6. Boundary optimization 与 ungroup
 
-**ungroup** 在 DB 中 **扁平化层次** → LEC compare point **层次名丢失**。
+### 6.1 Boundary optimization（边界优化）
+
+§5 表中的 `boundary_optimization` 属性打开后，优化 pass 可以 **穿过层次边界** 做三类变换（层次仍保留，只改边界逻辑）：
+
+| 变换 | 机制 | 边界变化 |
+|------|------|----------|
+| **常量端口传播** | 端口接 `1'b0/1'b1` → 常量推进子模块内折叠 | 该输入端口逻辑上消失 |
+| **跨边界反相吸收** | 端口外侧 INV 与内侧首级门合并（如 INV+AND → NAND 极性） | 端口 **极性翻转** |
+| **未连接输出剪枝** | 输出端口无顶层 fanout → 子模块内专属锥 DCE | 输出端口与其锥删除 |
+
+**副作用（必须管理）**：
+
+- 端口消失/极性变 → **LEC compare point 与 RTL 不再一一对应**（变换日志须记录，[09 §3.2](./09-logical-equivalence-checking.md)）
+- 已发布的 **timing abstract（§3）失效** — 端口集变了，须重新 characterize
+- 同一子模块多实例时，不同实例边界条件不同 → **uniquify 后各自优化**（面积可能分化）
+
+关闭该属性（或 `dont_touch`）= 边界冻结，端口集与 RTL 严格一致 — 多实例复用、ECO 友好，但放弃跨边界化简。
+
+### 输入/输出案例 6.1 — `child(.en(1'b1))`
+
+**输入**：顶层例化 `child u0 (.en(1'b1), .a(x), .y(z));`，child 内 `y = en ? f(a) : '0;`
+
+| | 边界优化 **关** | 边界优化 **开** |
+|---|------------------|------------------|
+| `en` 端口 | 保留，接 tie-1 | **消失**（常量传播入内，MUX 折叠为 `y=f(a)`） |
+| child 面积 | MUX 树保留 | MUX 删除，面积 ↓ |
+| LEC | 端口一一对应 | 需常量传播记录，否则 `en` 锥 unmatched |
+| abstract | 仍有效 | **须重新生成** |
+
+### 6.2 ungroup 与 LEC
+
+**ungroup** 更进一步：在 DB 中 **扁平化层次** → LEC compare point **层次名丢失**。
 
 | 策略 | 内部 |
 |------|------|

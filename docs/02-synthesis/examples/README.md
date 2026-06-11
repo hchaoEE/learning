@@ -10,7 +10,7 @@
 | [sdc_walkthrough/](./sdc_walkthrough/) | [05 章](../05-constraints-sdc.md) timing graph |
 | [tdo_walkthrough/](./tdo_walkthrough/) | [06 章](../06-timing-driven-optimization.md) STA/transform |
 | [retiming_walkthrough/](./retiming_walkthrough/) | [06 §8](../06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) |
-| [power_walkthrough/](./power_walkthrough/) | [02 §8](../02-inference.md#8-时钟门控icg推断--asic-低功耗)、[08 章](../08-low-power-synthesis.md) |
+| [power_walkthrough/](./power_walkthrough/) | [02 §9](../02-inference.md#9-时钟门控icg推断--asic-低功耗)、[08 章](../08-low-power-synthesis.md) |
 
 阅读顺序建议：**mini_chain** → 各专题 walkthrough。
 

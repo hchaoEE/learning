@@ -26,6 +26,24 @@
 | 06 | setup/hold slack、DRC limit |
 | 无有效 clock | 时序图 **无 check** → compile 退化为 **纯结构映射** |
 
+### 输入/输出案例
+
+**输入**（SDC 文本，2 行）：
+
+```tcl
+create_clock -period 1.0 [get_ports clk]
+set_input_delay 0.3 -clock clk [get_ports din]
+```
+
+**输出**（timing graph 上的最小变化）：
+
+```text
+clk 端口   → clock 对象（period=1.0，launch/capture 波形）
+所有 FF/CK → 挂上该 clock 的传播边
+din 端口   → 虚拟 launch：arrival(din) 起点 = 0.3
+FF/D 引脚  → setup/hold check 节点（required 规则生效）
+```
+
 ---
 
 ## 2. SDC → Timing Graph：编译流水线

@@ -2,7 +2,7 @@
 
 ASIC **逻辑综合**：RTL → **可交付的门级网表**，并在 **时序、等价性、可测性、低功耗** 上签核。
 
-> 完整章节地图：[README](./README.md) · 设计说明：[DESIGN.md](./DESIGN.md) · **方方面面索引**：[12 §8](./12-deliverables-and-handoff.md#8-综合方方面面索引)
+> 完整章节地图：[README](./README.md) · 设计说明：[DESIGN.md](./DESIGN.md) · **方方面面索引**：[12 §9](./12-deliverables-and-handoff.md#9-综合方方面面索引)
 
 ---
 
@@ -69,7 +69,7 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 |------|------|
 | 主文 | [03](./03-optimization.md) |
 | 映射如何用 | [04](./04-technology-mapping.md) |
-| 粗/细 | [README §9](./README.md#9-粗粒度优化-vs-细粒度优化写在哪一章) |
+| 粗/细 | [README §8](./README.md#8-粗粒度优化-vs-细粒度优化写在哪一章) |
 
 ---
 
@@ -112,7 +112,7 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
     │ ⑤ timing-driven opt 环（06）× N
     ▼
   时序闭合的 mapped 网表
-    │ ⑥（可选）retime / ICG / UPF 单元插入
+    │ ⑥（可选）retime / UPF 单元插入（ICG 壳在 ② 推断期已插，04 映射为库单元）
     ▼
   签核前网表 → 09 LEC / 11 DFT
 ```
@@ -137,10 +137,10 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 | 阶段 | DB 内形态（片段） |
 |------|-------------------|
 | Elaborate | `GTECH_AND`, `GTECH_OR` 两节点 |
-| → AIG | 3 AND 节点 + inv 边（示意） |
-| 粗优化后 | 2 AND 节点（strash+rewrite） |
-| Map | `ND2D1`, `OR2D1` 或 `OAI21` |
-| 06 | 可能 `ND2D1→ND2D2` |
+| → AIG | 2 AND 节点 + 3 条 inv 边（OR 经德摩根改写，见 [03 §2.1](./03-optimization.md)） |
+| 粗优化后 | 仍 2 AND（结构已最简；若 `(a&b)` 在别处复用则 strash 共享） |
+| Map | 单个 `AO21D1`，或 `AN2D1`+`OR2D1` 两单元 |
+| 06 | 可能 `AO21D1→AO21D2`（upsize） |
 
 → 逐步案例见 [03 §11](./03-optimization.md#11-案例集锦逐步理解)、[04 §11](./04-technology-mapping.md#11-案例集锦逐步理解-mapping)。
 

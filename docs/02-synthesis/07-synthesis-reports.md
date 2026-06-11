@@ -19,7 +19,7 @@
 | **WNS / TNS** | 04 初 STA、06 迭代 | 05、06 | timing graph 聚合 slack |
 | Hold worst slack | 06 min corner | 05 §6、06 §4 | 与 setup 可能冲突 |
 | Transition/cap 违例数 | 06 DRC 修复 | 05 §7、06 §5 | 电气 limit |
-| ICG 实例数 | 02 推断 + 08 意图 | 02 §8、08 | `CKLN*` 等 |
+| ICG 实例数 | 02 推断 + 08 意图 | 02 §9、08 | `CKLN*` 等 |
 | LS/ISO 实例数 | 08 UPF 标注后映射 | 08 | 跨电压边界 |
 | Compare point 数（LEC） | 09 签核 | 09 | 非 compile pass 产物 |
 
@@ -36,9 +36,21 @@
 | 寄存器数变、组合段变短 | 06 retiming | 06 §8 |
 | LATCH 标签存在 | 02 推断 | 02、RTL |
 
+### 输入/输出案例 2.1 — 三个 DB 快照定位阶段
+
+**输入**（同一设计的三个内部量快照）：
+
+| 快照 | GTECH 组合 | AIG node | 库单元 | buffer 占比 | WNS |
+|------|-----------|----------|--------|-------------|-----|
+| S1 | 9,400 | — | 0 | — | — |
+| S2 | 0 | 8,500 | 0 | — | — |
+| S3 | 0 | — | 6,800 | 11% | −0.04 |
+
+**输出（判断）**：S1 = 01/02 之后、03 之前；S2 = 03 进行中（已布尔化、未绑库）；S3 = 06 迭代中（buffer 占比已升、WNS 接近闭合）。
+
 ---
 
-## 3. 违例诊断决策树
+## 3. 违例诊断：决策树 + 引擎分支索引
 
 ```text
                     内部违例标签
@@ -57,31 +69,31 @@
                  或 RTL 架构
 ```
 
-| 违例 | 先读 | 常见内部根因 |
-|------|------|--------------|
-| setup | 06 §3 | 组合过深、驱动弱 |
-| hold | 06 §4 | fast corner、过强驱动 |
-| transition/cap | 06 §5 | fanout 过大 |
-| unconstrained | 05 §4、§8 | CDC 无 groups、SDC 悬空 |
-
-→ 与 [00 §7 pass 表](./00-synthesis-overview.md#7-compile-内部-pass-时间线全景) 对照。
-
----
-
-## 4. 违例类型 → 引擎分支（与 06 对齐）
-
-| 内部违例标签 | 根因（机制） | 引擎分支 |
-|--------------|--------------|----------|
-| `setup_violation` | 数据路径太慢（max corner） | 06 §3 sizing/buffer；§8 retiming |
-| `hold_violation` | 数据太快（min corner） | 06 §4 delay |
-| `transition_violation` | slew 超限 | 06 §5 buffer tree |
+| 内部违例标签 | 根因（机制） | 引擎分支 / 先读 |
+|--------------|--------------|------------------|
+| `setup_violation` | 数据路径太慢（max corner）：组合过深、驱动弱 | 06 §3 sizing/buffer；§8 retiming |
+| `hold_violation` | 数据太快（min corner）、过强驱动 | 06 §4 delay |
+| `transition_violation` | slew 超限：fanout 过大、弱驱动 | 06 §5 buffer tree |
 | `cap_violation` | 负载电容超限 | 06 §5 |
 | `no_clock` | SDC 未绑 clock | 05 §2、§8 |
-| `unconstrained_path` | 例外缺失或对象未解析 | 05 §4、§8 |
+| `unconstrained_path` | 例外缺失、CDC 无 groups、SDC 对象未解析 | 05 §4、§8 |
+
+机制细节以 [06 §7.1](./06-timing-driven-optimization.md) 为准，本表仅作索引。→ 与 [00 §7 pass 表](./00-synthesis-overview.md#7-compile-内部-pass-时间线全景) 对照。
+
+### 输入/输出案例 3.1 — 从标签到分支
+
+**输入**（违例扫描器输出，概念）：
+
+```text
+endpoint reg_q/D : setup_violation  slack=−0.10  (slow_max)
+net n123         : transition_violation  slew=0.42 > limit 0.30
+```
+
+**输出（引擎排队）**：先修 `n123` DRC（slew 超限时 delay 表外推不可信，见 06 §5.1），再进 06 §3 sizing 修 setup。
 
 ---
 
-## 5. QoR 对比（版本间）注意
+## 4. QoR 对比（版本间）注意
 
 对比两次 compile 内部结果时，须 **对齐**：
 
@@ -94,7 +106,7 @@
 
 ---
 
-## 6. 内部量与 LEC 的关系
+## 5. 内部量与 LEC 的关系
 
 | 内部量 | 含义 |
 |--------|------|
@@ -106,7 +118,7 @@
 
 ---
 
-## 7. 小结
+## 6. 小结
 
 本章 = **compile 仪表盘索引**；深入机制读 **05（约束图）**、**06（transform）**、对应 **walkthrough**。
 

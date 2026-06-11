@@ -48,6 +48,8 @@ RTL（Reference R）
                          → UNSAT 则等价（在约束下）
 ```
 
+> 「UNSAT → 等价」的前提：① compare point 已全部配对；② 复位序列 / `set_case_analysis` 等输入约束两侧一致；③ X 语义策略一致；④ 时序等价时为 **完整证明**（k-induction 等收敛），而非仅有界深度 BMC 未找到反例。
+
 ---
 
 ## 3. Compare point 匹配（内部）
@@ -69,6 +71,8 @@ RTL（Reference R）
 |--------------|----------|
 | `ungroup` | 层次名消失 → 靠拓扑 |
 | 常量传播 | 一侧 net tie 0/1，另一侧消失 |
+| **常量/等价/无负载寄存器优化**（[02 §10](./02-inference.md#10-寄存器级优化-pass推断后的时序元件清理)） | R 侧 FF 在 I 侧 **消失或合并** → 需 constant/merge 记录，否则报 unmatched |
+| **FSM re-encoding**（[02 §7](./02-inference.md#7-状态机fsm推断与状态编码)） | state 寄存器逐位含义不同 → 需 **state mapping** 或 STG 级比对 |
 | retiming | **FF 数/位置变化** → 需 **状态映射** |
 | 黑盒宏 | 两侧须 **同模型** |
 
@@ -77,7 +81,7 @@ RTL（Reference R）
 **R**：`u_ctrl/q_reg`  
 **I**：`u_ctrl/U142/Q`（ungroup 后扁平名）
 
-**内部**：拓扑匹配（同 reset、同 D 锥）→ 建立 **equivalent point** → 纳入 miter **不比较** 该 FF 两侧锥（已配对）。
+**内部**：拓扑匹配（同 reset、同 D 锥）→ 建立 **compare point 配对** → miter 仍对该 FF 的 Q **做 XOR 判差**，但 **在配对点截断 cone**：下游锥以该点为输入边界，避免重复展开已证子锥。
 
 ---
 
@@ -219,7 +223,7 @@ LEC **Pass** 是 [12 章](./12-deliverables-and-handoff.md) PnR 前 **质量门*
 
 | 要点 | |
 |------|--|
-| **证什么** | 在约束下 R 与 I **无输入使 diff=1** |
+| **证什么** | 在 **声明的约束与假设下**（compare point、复位、X 策略），R 与 I **无输入使 diff=1**，且证明须 **完整收敛** 而非仅有界搜索无反例 |
 | **关键** | compare point 匹配 + 时序等价假设 |
 | **综合相关** | retime、ungroup、常量 → 匹配难度 |
 | **失败** | 查 reset、X、黑盒、memory，非先看 QoR |
