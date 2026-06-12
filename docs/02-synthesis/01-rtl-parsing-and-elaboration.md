@@ -6,6 +6,8 @@
 
 本章从 **逻辑综合器前端（compiler frontend）** 的实现视角，说明 RTL 如何变成内部的 **层次化逻辑网表**。重点不是 Tcl 命令清单，而是：**数据结构、处理阶段、语义决策、以及 RTL 构造如何被 lowering 成通用逻辑（GTECH）**。
 
+**阅读方式**：全章用 **同一份案例**（[`top.sv`](./examples/elab_walkthrough/top.sv) + [`child.sv`](./examples/elab_walkthrough/child.sv)，`N=2,W=8`）串联。**§2** 按步骤写清「做什么 → 生成什么」；**§4–§13** 各阶段机制节开头均有 **「本案例」表**，与 §2 逐步对应。
+
 不同厂商（Synopsys DC/Fusion、Cadence Genus、Siemens PowerPro 等）的内部命名各异，但架构高度相似：**预处理器 → 解析器 → 语义分析 → Elaboration 引擎 → RTL 解释器（HDL lowering）→ 设计数据库（Design DB）**。
 
 > **范围**：ASIC、标准单元综合；Elaboration 结束时应得到 **与工艺无关的布尔/时序逻辑图**（GTECH 或等价 IR）。工艺映射、时序驱动优化在后续章节。
@@ -127,18 +129,18 @@ endmodule
 
 ### 2.1 全流程总表（先建立地图）
 
-| 步骤 | 阶段 | 本案例：处理了啥 | 本案例：变成了啥 | 机制详解 |
-|:----:|------|------------------|------------------|----------|
-| 0 | 读入 | 两个 `.sv` 文件 | 字符流（按文件） | — |
-| A | 预处理 | 无 `` `ifdef `` / `` `define `` | **文本不变** | [§4](#4-阶段-a预处理preprocess) |
-| B | 词法 | 切分关键字、标识符、运算符 | Token 序列（带 file:line） | [§5](#5-阶段-b词法分析lexical-analysis) |
-| C | 语法 | 两个 `module` 声明 | **logical library** 中 2 份 AST 模板 | [§6](#6-阶段-c语法分析parse与-ast) |
-| D | 语义 | 模块内符号、位宽、多驱动规则 | 符号表 + 语义错误列表（仍 **无实例树**） | [§7](#7-阶段-d模块级语义分析semantic-analysis-pre-elab) |
-| E | Elaboration | 参数落地、`generate` 展开、例化连接 | **Design DB**：Cell / Pin / Net 异构图 | [§8](#8-阶段-eelaboration-引擎核心) |
-| F | Lowering | `always_ff` / `always_comb` 解释 | **GTECH** 节点（SEQGEN、LAT、MUX…） | [§9](#9-阶段-frtl--结构-loweringrtl-interpretation) |
-| G | GTECH 定型 | 工艺无关原语集合就绪 | 可映射的 IR 网表 | [§10](#10-gtech通用工艺中间表示) |
-| H | Link | 解析 `u_child` → `child` 模板 | ref 边绑定完成 | [§11](#11-linkuniquify黑盒) |
-| I | Check | 遍历 DB 查多驱动、环、浮空 | **错误/警告报告** | [§13](#13-检查-pass在-db-上遍历) |
+| 步骤 | 阶段 | 本步做什么 | 本步生成什么 | 此步结束后内存里有什么 | 机制详解 |
+|:----:|------|------------|--------------|------------------------|----------|
+| 0 | 读入 | 打开 `top.sv`、`child.sv` | 按文件的 **字符流** | 仅文本，无 DB | — |
+| A | 预处理 | 宏/`ifdef`/`include` 文本变换 | 本案例：**文本不变** | 仍仅文本 | [§4](#4-阶段-a预处理preprocess) |
+| B | 词法 | 字符 → **token** | 带 `file:line` 的 token 链 | token 序列，**无 AST** | [§5](#5-阶段-b词法分析lexical-analysis) |
+| C | 语法 | token → **AST** | `worklib.top`、`worklib.child` 模板 | **logical library**（2 个 AST） | [§6](#6-阶段-c语法分析parse与-ast) |
+| D | 语义 | 模块内符号/位宽检查 | 符号表；本案例 **无 ERROR** | logical library + 符号表，**无 Cell** | [§7](#7-阶段-d模块级语义分析semantic-analysis-pre-elab) |
+| E | Elaboration | 参数、`generate`、例化、连线 | **Design DB** 实例树 + Net/Pin | 异构图 DB；**尚无 GTECH 门** | [§8](#8-阶段-eelaboration-引擎核心) |
+| F | Lowering | 解释 `always` 行为 | `16×GTECH_FD1` + `data_out` 上 LAT | DB + **GTECH 节点** | [§9](#9-阶段-frtl--结构-loweringrtl-interpretation) |
+| G | GTECH 定型 | 统一命名与属性 | 完整 **工艺无关 IR** | 可送 02 推断 / 04 映射的网表 | [§10](#10-gtech通用工艺中间表示) |
+| H | Link | 绑定 Cell→module ref | `u_child.ref → child(W=8)` | DB + 解析后的 ref 边 | [§11](#11-linkuniquify黑盒) |
+| I | Check | 遍历 DB 查违例 | **报告**：`sum` 多驱动 ERROR + latch Warning | DB 不变；多 **文本报告** | [§13](#13-检查-pass在-db-上遍历) |
 
 ```text
   top.sv + child.sv（文本）
@@ -409,7 +411,24 @@ Warning: Inferred latch on top/data_out
 
 ---
 
-### 2.12 读完走读后：细节去哪里查
+### 2.12 逐步累积：同一案例 IR 快照（一表串全程）
+
+| 步骤 | 本步输入（上一歩产物） | 本步输出（本步新生成） | 关键可见对象（本案例） |
+|:----:|------------------------|------------------------|------------------------|
+| 0 | — | 源文本 | `module top` / `module child` 字符串 |
+| A | 源文本 | 预处理后文本（同 0） | 无宏；`initial` 不存在 |
+| B | 文本 | Token 链 | `TK_ALWAYS_FF`、`TK_GENERATE`… |
+| C | Token | AST 模板 ×2 | `GenerateFor(N)` 未展开；`AlwaysFF(dout<=din)` |
+| D | AST | 符号表 | `top.sum` 声明为 net；**尚无** `g_slice[0]` |
+| E | 符号表+库 | Design DB | `g_slice[0/1].u_child`；`sum` 双驱动连接已建立 |
+| F | DB+行为队列 | GTECH 节点 | `GTECH_FD1×16`；`GTECH_LAT(data_out)` |
+| G | GTECH 片段 | 定型 IR | post-elab 网表可导出；无 `DFFRX1` |
+| H | IR | ref 绑定 | `u_child → child(W=8)` ✓×2 |
+| I | 完整 DB | check 报告 | `MULTIPLE_DRIVERS(sum)`；`latch(data_out)` |
+
+---
+
+### 2.13 读完走读后：细节去哪里查
 
 | 你想深挖 | 跳转 |
 |----------|------|
@@ -424,6 +443,18 @@ Warning: Inferred latch on top/data_out
 
 ## 3. 内部核心数据结构（Design Database）
 > **一句话**：内部核心数据结构（Design Database）——本章核心机制点。实例见 [§2 步骤 E](#26-步骤-eelaboration--展开成-design-db)。
+
+### 本案例（top + child）— 步骤 E 产物长什么样
+
+> 步骤 E 完整展开见 [§2.6](#26-步骤-eelaboration--展开成-design-db)；此处解释 **Design DB 对象** 在本案例中的含义。
+
+| DB 对象 | 本案例中对应什么 |
+|---------|------------------|
+| `Design: top` | 一次 `elaborate top` 的展开结果 |
+| `Cell g_slice[0].u_child` | `generate` 第 0 次迭代例化的 `child` |
+| `Net sum[7:0]` | 两路 `child.dout` 均连接于此 → 步骤 I 多驱动 |
+| `Pin` | 如 `g_slice[0].u_child/dout` → `sum` |
+
 
 综合器在内存中维护一张 **异构图（heterogeneous graph）**，仿真器也有类似层次，但综合侧 **二值逻辑、无延时、无 initial 执行**。
 
@@ -487,6 +518,19 @@ Design: top
 ## 4. 阶段 A：预处理（Preprocess）
 > **一句话**：阶段 A：预处理（Preprocess）——本章核心机制点。
 
+
+### 本案例（top + child）— 步骤 A
+
+> 一条龙索引：[§2.2 步骤 A](#22-步骤-a预处理preprocess)
+
+| 项目 | 本案例（`top.sv` + `child.sv`，`N=2,W=8`） |
+|------|---------------------------------------------|
+| **本步做什么** | 对源文件做 `` `define `` 展开、`` `ifdef `` 分支删除、`` `include `` 文本插入 |
+| **输入** | 磁盘上的 `top.sv`、`child.sv` **原始字符流** |
+| **生成产物** | **与输入相同的文本**（两文件均无预处理指令，本步等价跳过） |
+| **内存状态** | 尚无 AST、尚无 Design DB |
+
+
 在词法分析之前，对 **源文件字符流** 做文本级变换：
 
 ```text
@@ -504,7 +548,7 @@ Design: top
 
 **工程要点**：宏未定义导致空行或残留 token，是 Analyze 阶段 **莫名语法错误** 的常见根因。
 
-### 输入/输出案例 4.1
+### 输入/输出案例 4.1 — 补充（含宏的片段，非 top/child 主案例）
 
 **输入**（`examples/elab_walkthrough/preprocess_demo.sv`）：
 
@@ -532,6 +576,19 @@ Design: top
 ## 5. 阶段 B：词法分析（Lexical Analysis）
 > **一句话**：阶段 B：词法分析（Lexical Analysis）——本章核心机制点。
 
+
+### 本案例（top + child）— 步骤 B
+
+> 一条龙索引：[§2.3 步骤 B](#23-步骤-b词法lex)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 把字符流切成 **token**，并为每个 token 记录 `file:line` |
+| **输入** | 步骤 A 输出的字符流（本案例 = 源文件原文） |
+| **生成产物** | 两条 token 链（按文件），例如 `child.sv` 中 `always_ff` 一行 → `TK_ALWAYS_FF TK_AT TK_POSEDGE TK_ID(clk) …`；`top.sv` 中 `generate` → `TK_GENERATE TK_FOR TK_ID(genvar) …` |
+| **内存状态** | 仍无 AST；只有 token 序列 |
+
+
 将字符流切分为 **token** 序列：
 
 ```text
@@ -543,30 +600,43 @@ identifier, keyword, operator, number_literal, string, @, always, ...
 
 内部常使用 **Flex/手写 lexer + LRM 关键字表**；错误恢复策略因工具而异（多数在严重语法错误时停止当前文件 analyze）。
 
-### 输入/输出案例 5.1
+### 输入/输出案例 5.1（与 §2.3 相同）
 
-**输入**：
+**输入**（`top.sv` generate 头，步骤 B 之后）：
 
 ```systemverilog
-assign sum = data_in + 8'h01;
+    generate
+        for (genvar i = 0; i < N; i++) begin : g_slice
 ```
 
 **输出**（Token 序列缩写）：
 
 ```text
-TK_ASSIGN  TK_ID(sum)  TK_EQ
-TK_ID(data_in)  TK_PLUS  TK_NUM(8'h01)  TK_SEMI
+TK_GENERATE  TK_FOR  TK_LPAREN  TK_ID(genvar)  TK_ID(i)  TK_EQ  TK_NUM(0)  TK_SEMI  ...
 ```
 
 | 输入 | 输出 |
 |------|------|
-| 预处理后字符流 | 带 file:line 的 token 链 |
-| `assign sum = ;` | 缺表达式 → **词法/语法错误** |
+| 本案例预处理后字符流 | 带 `top.sv:13` 等 file:line 的 token 链 |
+| 畸形源 `assign sum = ;` | 缺表达式 → **词法/语法错误**（通用反例） |
 
 ---
 
 ## 6. 阶段 C：语法分析（Parse）与 AST
 > **一句话**：阶段 C：语法分析（Parse）与 AST——本章核心机制点。
+
+
+### 本案例（top + child）— 步骤 C
+
+> 一条龙索引：[§2.4 步骤 C](#24-步骤-c语法parse--logical-library)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | Parser 读 token，为每个 `module` 建 **AST**，写入 **logical library** |
+| **输入** | 步骤 B 的 token 流 |
+| **生成产物** | `worklib.child` → `ModuleDecl`（含 `AlwaysFF: dout<=din`）；`worklib.top` → `ModuleDecl`（含 `GenerateFor` + `AlwaysComb`） |
+| **尚未生成** | **无 Cell**、**无 `g_slice[0]`**（generate 循环次数 `N` 尚未落地） |
+
 
 ### 6.1 抽象语法树（AST）
 
@@ -595,7 +665,7 @@ Logical Library
 - **跨模块引用**（例化 `uart_tx`）在 analyze 时仅 **登记引用名**，不检查子模块是否已存在（可能稍后 analyze）。  
 - **Package**：analyze 时解析 `typedef`、`function` 声明，供 import 解析。
 
-### 输入/输出案例 6.1
+### 输入/输出案例 6.1（= §2.4 步骤 C，本案例主路径）
 
 **输入**（`child.sv` 片段）：
 
@@ -633,6 +703,20 @@ worklib.top   → AST(top)
 ## 7. 阶段 D：模块级语义分析（Semantic Analysis, pre-elab）
 > **一句话**：阶段 D：模块级语义分析（Semantic Analysis, pre-elab）——本章核心机制点。
 
+
+### 本案例（top + child）— 步骤 D
+
+> 一条龙索引：[§2.5 步骤 D](#25-步骤-d模块级语义semantic-pre-elab)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 在 **单个 module 模板** 内建符号表，检查端口冲突、可综合子集、同模块内多驱动 |
+| **输入** | 步骤 C 的 AST（`child`、`top` 各一份） |
+| **生成产物** | 两份合法 **符号表** + 位宽属性；**错误列表为空**（就本案例 RTL 而言） |
+| **故意未做** | `sum` 的双驱动 **此时不报**——generate 还没展开，两个 `u_child` 尚未同时接到 `sum` |
+| **内存状态** | 仍 **无实例树** |
+
+
 在 **单个 module 模板** 内完成的检查与符号绑定：
 
 | 任务 | 说明 |
@@ -650,7 +734,7 @@ worklib.top   → AST(top)
 - `generate` 循环次数（上界来自 parameter）。  
 - 层次路径名、位宽依赖 parameter 的端口。
 
-### 输入/输出案例 7.1
+### 输入/输出案例 7.1 — 通用机制反例（非 top/child）
 
 **案例 1 — 位宽（输入/输出）**
 
@@ -680,6 +764,20 @@ Error: net 'x' multiple structural drivers
 
 ## 8. 阶段 E：Elaboration 引擎（核心）
 > **一句话**：把 module 模板展开成带具体 cell/net 的设计树，并完成 parameter、generate、端口绑定。
+
+
+### 本案例（top + child）— 步骤 E
+
+> 一条龙索引：[§2.6 步骤 E](#26-步骤-eelaboration--展开成-design-db)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 从 `elaborate top` 出发：参数求值 → 展开 `generate for` → 创建 Cell/Pin/Net → 递归子模块 |
+| **输入** | logical library + 顶层名 `top` + 默认参数 `N=2, W=8` |
+| **生成产物** | **Design DB 异构图**：`g_slice[0].u_child`、`g_slice[1].u_child`；Net `clk,en,data_in[7:0],sum[7:0],data_out[7:0]`；Pin 连接见 §2.6 E.3 |
+| **行为块状态** | `always_ff` / `always_comb` 进入 **待 lowering 队列**（逻辑尚未是 GTECH 门） |
+| **本案例埋雷** | 两路 `child.dout` 均连 `sum` → 为步骤 I 的 **多驱动 ERROR** 埋伏笔 |
+
 
 Elaboration 是 **从模板实例化出一棵唯一的、常量化的设计树** 的过程。可理解为：**把“类”（module）实例化成“对象”（cell tree）**。
 
@@ -751,7 +849,7 @@ elaborate_module(M, params):
 
 这是 **前端优化**，与 [06](./06-timing-driven-optimization.md) **细粒度时序优化** 不同。
 
-### 输入/输出案例 8.1
+### 输入/输出案例 8.1（= §2.6 步骤 E，本案例主路径）
 
 **输入**：elaborate `top`，参数 `N=2,W=8`
 
@@ -786,6 +884,20 @@ Cell u: Pin din→Net a, Pin dout→Net y
 ## 9. 阶段 F：RTL → 结构 Lowering（RTL Interpretation）
 > **一句话**：阶段 F：RTL → 结构 Lowering（RTL Interpretation）——本章核心机制点。
 
+
+### 本案例（top + child）— 步骤 F
+
+> 一条龙索引：[§2.7 步骤 F](#27-步骤-f-lowering--rtl-行为--gtech)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 解释 `always_ff` / `always_comb`：时序块 → **SEQGEN**；组合块 → MUX/LAT；删除过程语义 |
+| **输入** | 步骤 E 的 Design DB + 待 lowering 行为块 |
+| **生成产物（child）** | `8× GTECH_FD1`：`.CK(clk) .D(din[i]) .Q(dout[i])`，`Q` 经 Pin 连到 `sum[i]` |
+| **生成产物（top）** | `always_comb` 缺 `else` → **`GTECH_LAT` / 反馈 MUX** 驱动 `data_out` + Lint: inferred latch |
+| **内存状态** | 同一 Design DB 上 **挂上 GTECH 节点**；尚无 `.lib` 单元名 |
+
+
 这是综合器 **最“像编译器”** 的一步：把 **过程式 RTL** 变成 **纯结构网表**。仿真器 **不** 做此步（或仅在 force 等特殊场景）。
 
 ### 9.1 `assign` 与连续逻辑
@@ -802,7 +914,7 @@ GTECH_AND → GTECH_OR → net y
 
 表达式树：**深度优先** 建立运算符节点；公共子表达式 **可能** 被 CSE（公共子表达式消除）合并（多在后期优化）。
 
-### 输入/输出案例 9.1
+### 输入/输出案例 9.1 — 通用 `assign`（本案例 top/child **无** `assign`，见步骤 F 的 `always`）
 
 **输入**：`assign y = (a & b) | c;`
 
@@ -844,7 +956,7 @@ always_comb
 
 > 本节只到 **lowering 产物**（GTECH_LAT 候选 + Lint）；latch 的推断判定、ASIC 禁 latch 策略见 [02 §4](./02-inference.md#4-锁存器latch推断)。
 
-### 输入/输出案例 9.2
+### 输入/输出案例 9.2（= §2.7 F.2，本案例主路径）
 
 **输入**（`top.sv`，缺 else）：
 
@@ -898,7 +1010,7 @@ GTECH_SEQGEN (或 DFF 抽象)
 
 **异步复位同步释放**：RTL 常是 **两级寄存器 + 组合逻辑**；elaboration **不自动插入**，由设计提供；工具只在网表中看到具体 DFF 结构。
 
-### 输入/输出案例 9.3
+### 输入/输出案例 9.3（= §2.7 F.1，本案例主路径）
 
 **输入**（`child.sv`）：
 
@@ -985,6 +1097,19 @@ endcase
 ## 10. GTECH：通用工艺中间表示
 > **一句话**：GTECH：通用工艺中间表示——本章核心机制点。
 
+
+### 本案例（top + child）— 步骤 G
+
+> 一条龙索引：[§2.8 步骤 G](#28-步骤-ggtech-网表就绪)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 统一 GTECH 命名、bus 视图、SEQGEN 属性；确认工艺无关 IR 完整 |
+| **输入** | 步骤 F lowering 后的网表 |
+| **生成产物** | 可映射的 **GTECH 网表**（示意）：16 个 `GTECH_FD1` + `top` 上 latch/MUX 结构；**无** `DFFRX1` |
+| **下一章衔接** | 02 推断贴 REG/LATCH 标签 → 03 AIG（本案例组合锥很小）→ 04 映射为 `.lib` 单元 |
+
+
 GTECH 是 **与 Foundry 无关** 的原语集合，充当 **RTL 与 .lib 标准单元** 之间的 IR。
 
 ```text
@@ -1025,6 +1150,20 @@ GTECH_FD1 U_dout_0_ ( .CK(clk), .D(din[0]), .Q(dout[0]) );
 
 ## 11. Link、Uniquify、黑盒
 > **一句话**：Link、Uniquify、黑盒——本章核心机制点。
+
+
+### 本案例（top + child）— 步骤 H
+
+> 一条龙索引：[§2.9 步骤 H](#29-步骤-hlink)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 将每个 Cell 的 **ref 指针** 绑定到 logical library 中的 module 定义 |
+| **输入** | `g_slice[i].u_child` 上 ref 名 `child` |
+| **生成产物** | `g_slice[0].u_child.ref → worklib.child(W=8)` ✓；`g_slice[1]` 同理 |
+| **本案例无需** | **Uniquify**（两实例 parameter 相同，共用同一 ref 变体） |
+| **失败情形** | 若未 `analyze child.sv` → `Error: reference 'child' not found` |
+
 
 ### 11.1 Link
 
@@ -1076,6 +1215,16 @@ worklib.child_W8, worklib.child_W16  // 两张独立网表
 ## 12. 与仿真 Elaboration 的语义差
 > **一句话**：与仿真 Elaboration 的语义差——本章核心机制点。
 
+
+### 本案例（top + child）— 仿真 vs 综合
+
+| 项目 | 本案例 |
+|------|--------|
+| **综合侧** | `top`/`child` 无 `#delay`、`initial`；elaboration 得到 **2-state** Design DB + GTECH |
+| **若 RTL 含仿真构造** | `#10`、`initial` 在综合 elaboration **忽略或报错**；仿真通过 ≠ 综合语义正确 |
+| **本案例注意** | `sum` 双驱动：仿真可能表现为 X；综合 **check_design 直接 ERROR** |
+
+
 | 维度 | 仿真器 | 综合器 |
 |------|--------|--------|
 | 值域 | 4-state (0,1,X,Z) | 2-state（X 仅 Lint） |
@@ -1103,6 +1252,20 @@ worklib.child_W8, worklib.child_W16  // 两张独立网表
 
 ## 13. 检查 Pass：在 DB 上遍历
 > **一句话**：检查 Pass：在 DB 上遍历——本章核心机制点。
+
+
+### 本案例（top + child）— 步骤 I
+
+> 一条龙索引：[§2.10 步骤 I](#210-步骤-icheck_design)
+
+| 项目 | 本案例 |
+|------|--------|
+| **本步做什么** | 遍历 Design DB：多驱动、浮空、组合环、悬空 pin、latch 报告 |
+| **输入** | 步骤 G + H 完成的完整 DB |
+| **生成产物** | **报告文本**（非新 IR）：`ERROR MULTIPLE_DRIVERS on sum[*]`；`Warning: Inferred latch on data_out` |
+| **修复方向** | `sum`：只保留一个 child 或改为合法运算；`data_out`：补 `else` 或改 `always_ff` |
+| **修复前** | 综合链通常 **卡住**；修复后才进 [02 推断](./02-inference.md) |
+
 
 `check_design` 等对 **已建 Design DB** 做一致性遍历：
 
