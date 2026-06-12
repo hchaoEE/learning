@@ -1,6 +1,6 @@
 # 低功耗 / ICG walkthrough
 
-与 [02 §9](../../02-inference.md#9-时钟门控icg推断--asic-低功耗)、[08 章](../../08-low-power-synthesis.md) 对照。
+与 [02 §9](../../02-inference.md#9-时钟门控icg推断--asic-低功耗)、[09 章](../../09-low-power-synthesis.md) 对照。
 
 ## 案例 A — ICG 推断（icg_bank.sv）
 
@@ -31,7 +31,7 @@ clk ──► CKLNQD1/E ──► clk_g ──► 32 × DFFX1
 
 ---
 
-## 案例 B — 跨电压域（08 §2）
+## 案例 B — 跨电压域（09 §2）
 
 **DB 标注（概念，无真实 .upf 文件）**：
 
@@ -50,5 +50,5 @@ clk ──► CKLNQD1/E ──► clk_g ──► 32 × DFFX1
 ## 阅读顺序
 
 ```text
-02 §9 → 本目录案例 A → 08 §2–§4 → 05 §6 MCMM
+02 §9 → 本目录案例 A → 09 §2–§4 → 05 §6 MCMM
 ```

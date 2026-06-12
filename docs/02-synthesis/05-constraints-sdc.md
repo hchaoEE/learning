@@ -81,7 +81,48 @@ capture: reg_b/CK @ 1.0, 2.0, 3.0 …
 setup check: reg_b/D required @ capture − setup_time
 ```
 
-**Slack** = required(D) − arrival(D)（见 [06 §2.1](./06-timing-driven-optimization.md#21-mapped-ir-上的时序图)）。
+**Slack** = required(D) − arrival(D)（求值与传播机制见 [07 §3](./07-internal-sta-and-qor.md#3-at--rt-传播算法)）。
+
+### 2.2 Check 节点绑定与 ideal / propagated
+
+**Pin 级标注**：编译流水线第 4 步在每个时序 check 上挂三样东西：
+
+| 标注 | 内容 | 来源 |
+|------|------|------|
+| `launch_clock_id` | 数据起点 FF 绑定的 clock 对象 | clock 传播边可达性分析 |
+| `capture_clock_id` | check 所在 FF 的 CK 绑定 | 同上 |
+| check 类型 + 库值 | setup/hold/recovery/removal 的 `.lib` 查表入口 | FF 的 timing arc |
+
+一个 D pin 可能有 **多对 (launch, capture)** 组合（多 clock 扇入经 MUX）——每对独立成 check，分析时各自求值（[07 §4.2](./07-internal-sta-and-qor.md#42-launch--capture-配对)）。
+
+**例外的两种内部实现**（§4 的例外语义落到数据结构上）：
+
+| 例外 | 内部动作 | 后果 |
+|------|----------|------|
+| `false_path` / 异步 `clock_groups` | **删 check 边**（或标 disabled） | endpoint 退出路径分组桶，不再产生 slack |
+| `multicycle_path` / `max_delay` | **改 required**（换 capture 沿 / 覆盖预算） | check 仍在，约束松紧改变 |
+
+「删边」与「改 required」对 06 的影响完全不同：前者让违例 **消失**，后者让违例 **变小** — 误用 false_path 掩盖真实路径属「删边」类事故。
+
+**Ideal vs propagated**：
+
+| 模式 | clock 传播边 delay | skew/latency 来自 | 谁在用 |
+|------|--------------------|---------------------|--------|
+| **ideal** | 0 | `set_clock_latency`（显式建模）+ `set_clock_uncertainty`（margin） | 综合主体 |
+| **propagated** | clock tree cell arc 累加 | 真实树 | CTS 后签核 |
+
+切换只改 **clock 边的 delay 语义**，SDC 对象与 check 绑定不变 — 这就是「综合 SDC 与签核 SDC 同一份」可行的内部原因。综合 WNS 与签核 WNS 的偏差根因之一即在此（[07 §4.3](./07-internal-sta-and-qor.md#43-ideal-vs-propagated-clock)）。
+
+### 输入/输出案例 2.2
+
+**输入**：`reg_b/D` 有两个时钟域扇入（`clk_a` 直接路径、`clk_b` 经 MUX），加 `set_false_path -from clk_b -to clk_a`。
+
+**输出（check 绑定变化）**：
+
+| check (launch→capture) | false_path 前 | 后 |
+|--------------------------|----------------|-----|
+| clk_a → clk_a setup/hold | 有效 | 有效 |
+| clk_b → clk_a setup/hold | 有效（按公倍周期最紧沿对） | **边删除**，endpoint 从该桶消失 |
 
 ---
 
@@ -135,14 +176,35 @@ period T
 
 **与 retiming 交互**：multicycle 改变 **有效 period**，retime 引擎读同一 DB 属性（见 [06 §8.3](./06-timing-driven-optimization.md#83-内部控制属性)）。
 
-### 4.3 clock_groups
+### 4.3 clock_groups：三种互斥的不同图语义
 
-| 内部语义 | 效果 |
-|----------|------|
-| `-asynchronous` | 两 clock 域间路径 **默认 false** |
-| `-physically_exclusive` | 互斥时钟，不同时活跃 |
+三个选项在内部 **不是同一张 false 表**：
 
-CDC 路径若无此标注，STA 会 **错误地** 做跨域 setup → **虚假违例** 或 **虚假满足**。
+| 选项 | 物理含义 | 图语义 | 与 crosstalk 分析（签核） |
+|------|----------|--------|-----------------------------|
+| `-asynchronous` | 两域真异步（各自 PLL） | 跨组 **所有 data check 删除**（§2.2「删边」类） | 仍当作可同时翻转（噪声要算） |
+| `-physically_exclusive` | 同一 pin 上二选一的 clock（mux 后只可能有一个存在） | 跨组 check 删除 **且** 同 pin 多 clock 标注合法化 | **不可能同时存在** → 噪声也不算 |
+| `-logically_exclusive` | 两 clock 物理都在树上，但 **逻辑上不同时 active**（mux 选择） | 跨组 check 删除 | 物理共存 → 噪声仍算 |
+
+综合阶段三者效果接近（都剪 check）；区别主要传递给 **签核 STA / SI 分析** — 但约束在综合期就写错，签核就继承错误。
+
+**与逐条 `false_path` 的对比**：
+
+| 方式 | 粒度 | 风险 |
+|------|------|------|
+| `clock_groups -asynchronous` | **整域 × 整域**，新加路径自动覆盖 | 误把同步关系声明为异步 → 真路径失检 |
+| 逐条 `false_path -from A -to B` | 单路径 | RTL 改动新增跨域路径 **漏标** → 虚假违例（06 浪费预算去修）|
+
+**两种 failure mode**（无标注或错标注时）：
+
+```text
+漏标（无 groups）：STA 用公倍周期最紧沿对算跨域 setup
+   → 虚假违例 → 06 对不可能满足的路径疯狂加 buffer/upsize（面积浪费）
+错标（同步域误声明异步）：真实路径 check 被删
+   → 虚假满足 → 综合/签核全绿，silicon 上偶发错误（最危险）
+```
+
+同步器本身的安全性靠 **电路结构**（双 FF）而非约束 — 约束只是告诉引擎「这里不要检查」。
 
 ### 4.4 max_delay / min_delay
 
@@ -279,27 +341,51 @@ Elaboration 后 **generate 路径、uniquify 后缀** 必须与 SDC 一致（见
 
 ## 9. 生成时钟与 uncertainty（内部）
 
-### 9.1 generated_clock
+### 9.1 generated_clock：波形派生机制
 
-**语义**：从 **master clock** 或 **pin 波形** 派生子 clock 对象。
+**语义**：从 **master clock** 派生子 clock 对象，子 clock 波形 **由 master 波形计算**，而非独立声明。
 
-```text
-master clk @ 100MHz
-  └── generated clk_div2 @ 50MHz（分频）
-        └── FF 的 launch/capture 可绑不同 clock 对象
-```
-
-**内部**：timing graph 上 **边延迟 + 波形相位** 决定跨域路径是否检查。
-
-### 9.2 clock uncertainty
-
-**语义**：在 required 或 launch 上 **减 margin**（setup/hold 各可不同）。
+**内部派生步骤**：
 
 ```text
-required(D) ← capture_edge − setup − uncertainty_setup
+1. 解析 source pin（分频器 FF 的 Q、mux 输出等）
+2. 检查 master → source pin 存在 clock 传播路径（否则告警：无波形可派生）
+3. 按 -divide_by / -multiply_by / -edges / -invert 从 master 沿表算出子沿表
+4. 子 clock 成为独立 clock 对象（独立 id），从 source pin 起继续传播
 ```
 
-**06**：uncertainty 越大 → slack 越小 → **更激进 sizing**。
+| 派生参数 | 沿表变换（master period = T） |
+|----------|--------------------------------|
+| `-divide_by 2` | 取 master 每隔一个上升沿 → period 2T |
+| `-edges {1 3 5}` | 用 master 第 1/3/5 个沿构造一个周期 |
+| `-invert` | 沿表整体反相 |
+
+**为何不直接 `create_clock`**：generated clock 的沿 **锚定 master 时刻表** — launch 在 master、capture 在 generated 的路径，沿配对（[07 §4.2](./07-internal-sta-and-qor.md#42-launch--capture-配对)）用 **同一时间轴**，相位关系自动正确；独立 create_clock 则两轴无关，跨域 check 全错。
+
+**级联与环路**：generated 可再派生 generated（沿表逐级计算）；若 source pin 的扇入锥含自身 clock 网络 → **派生环**，引擎检测后拒绝并要求显式 create_clock 截断。
+
+**与 mux 后时钟**：mux 选择多个 master 时，每个输入派生一个 generated clock 挂在同一 pin → 配合 §4.3 `-physically_exclusive` 剪掉互斥组合。
+
+### 9.2 uncertainty 与 latency 的分量语义
+
+两者都是 ideal 模式下 **对未来 clock tree 的建模**，但落点不同：
+
+| 属性 | 落在公式哪里 | 建模什么 |
+|------|--------------|----------|
+| `set_clock_latency -source` | launch/capture 沿 **整体平移**（PLL→clock 根） | 时钟源插入延时 |
+| `set_clock_latency`（network） | 同上（clock 根→FF/CK），CTS 后被 propagated 实测替代 | 树延时估计 |
+| `set_clock_uncertainty -setup` | **required 减**：`required = capture − setup − U_setup` | skew + jitter + margin |
+| `set_clock_uncertainty -hold` | **required 加**：hold check 更难过 | skew（jitter 对同沿 hold 影响小） |
+| inter-clock uncertainty（跨 clock 对） | 仅对特定 launch/capture clock 对生效 | 两棵树间 skew 更大 |
+
+```text
+setup:  required(D) = T_capture + latency − t_setup − U_setup
+hold:   required(D) = T_capture(同沿) + latency + t_hold + U_hold
+```
+
+**关键区别**：latency 同时平移 launch 与 capture（同 clock 时 **互相抵消**，跨 clock 时不抵消）；uncertainty 是 **单边 margin**，永远收紧。CTS 后 network latency 被真实树取代，**uncertainty 应当调小**（只留 jitter）——否则双重悲观。
+
+**06 视角**：uncertainty 越大 → 全 endpoint slack 越紧 → sizing 越激进、面积越大；这是「margin 换鲁棒性」的显式旋钮。
 
 ### 输入/输出案例 9.1
 
@@ -325,5 +411,5 @@ required(D) ← capture_edge − setup − uncertainty_setup
 
 - [04 映射](./04-technology-mapping.md)
 - [06 细粒度优化](./06-timing-driven-optimization.md)
-- [07 内部量索引](./07-synthesis-reports.md)
+- [08 内部量索引](./08-synthesis-reports.md)
 - [examples/sdc_walkthrough/](./examples/sdc_walkthrough/)

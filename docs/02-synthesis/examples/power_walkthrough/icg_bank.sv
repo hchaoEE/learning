@@ -1,5 +1,5 @@
 // ICG 推断 walkthrough：32 位同步 enable bank
-// 对照 02 §9、08 §3
+// 对照 02 §9、09 §3
 
 module icg_bank (
     input  logic        clk,

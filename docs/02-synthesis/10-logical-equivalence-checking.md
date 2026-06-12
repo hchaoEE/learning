@@ -1,9 +1,9 @@
-# 2.9 逻辑等价性检查（LEC）— 内部机制
+# 2.10 逻辑等价性检查（LEC）— 内部机制
 
 综合把 RTL **改写成** 门级网表（换结构、插 buffer、搬移 FF）。**LEC** 用形式化方法证明：**在相同输入约束下，Reference 与 Implementation 行为一致**。
 
 > 本章讲 **miter、比对点匹配、时序等价** 的内部算法骨架，不是工具 flow 教程。  
-> 与 [07 内部量](./07-synthesis-reports.md)、[06 retiming](./06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) 衔接。
+> 与 [08 内部量](./08-synthesis-reports.md)、[06 retiming](./06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) 衔接。
 
 ---
 
@@ -120,7 +120,7 @@ Cycle 2+: 数据路径 XOR 判差
 
 ---
 
-## 5. 求解引擎（概念）
+## 5. 求解引擎
 
 | 方法 | 适用 |
 |------|------|
@@ -129,7 +129,76 @@ Cycle 2+: 数据路径 XOR 判差
 | **Hybrid** | 先 BDD 化简再 SAT |
 | **ABC &cec** | 学术/开源对照（组合） |
 
-**Incremental verify**：层次化时 **子模块先证**，顶层 miter **缩小**。
+### 5.1 SAT 管线：miter → AIG → CNF
+
+```text
+miter（R 锥 + I 锥 + XOR）
+    │ ① AIG 化 + strash（两侧结构相同的子锥直接合并为同一节点）
+    ▼
+化简后 AIG（常常已大幅缩小 — strash 即完成大半证明）
+    │ ② Tseitin 编码：每个 AND 节点引入 1 个 CNF 变量 + 3 个子句
+    ▼
+CNF + 目标子句（diff = 1）
+    │ ③ SAT 求解器（CDCL）
+    ▼
+UNSAT → 等价证书      SAT → 满足赋值 = 反例输入向量
+```
+
+| 步骤要点 | 说明 |
+|----------|------|
+| strash 在 LEC 中的角色 | 与 [03 §5.1](./03-optimization.md) **同一算法、不同目的**：03 用它化简功能，LEC 用它 **让相同子结构两侧合一** — 若 miter 整体 strash 后 XOR 两输入是同一节点，**无需 SAT 即证等价** |
+| Tseitin 线性膨胀 | CNF 规模 ∝ AIG 节点数（非指数）— 这是 SAT 路线能处理大锥的原因 |
+| UNSAT = 证书 | 「不存在使 diff=1 的输入」是 **全空间命题**，由 UNSAT proof 保证（可导出供独立 checker 复验） |
+| SAT = 反例 | 满足赋值直接给出 PI/伪 PI 的具体值 → §7.1 debug 入口 |
+
+### 5.2 结构签名与证明缓存
+
+大设计的加速核心是 **不重复证明**：
+
+| 机制 | 内部 |
+|------|------|
+| **内部等价点（cut point）** | 先用随机仿真对两侧内部 net 分桶（候选等价类），再逐对 SAT 验证；已证等价的内部点对 **替换为同一伪输入**，下游锥规模骤减 |
+| **证明缓存** | 已证子锥按 **拓扑签名（AIG 哈希）** 缓存；另一 compare point 共享该子锥时直接复用结论 |
+| **分桶失败回退** | cut point 候选验证失败（false negative 风险）→ 回退到更大锥重证，**不影响正确性，只影响速度** |
+
+### 5.3 四态结果与 abort 语义
+
+每个 compare point 的 verify 结果是 **四态**，不是布尔：
+
+| 状态 | 含义 | 交付门控（13 §3）处理 |
+|------|------|------------------------|
+| **proven** | UNSAT 收敛，完整证明 | pass |
+| **falsified** | SAT 找到反例 | fail → §7.1 debug |
+| **inconclusive** | 时序证明未收敛（induction 不闭合） | **不是 pass** — 需换策略 |
+| **aborted** | 资源限制（时间/内存/锥规模）触顶 | **不是不等价** — 但也不能签核 |
+
+**Abort 处理决策树**：
+
+```text
+aborted compare point
+    │ 锥是否过大（datapath/乘法器）？
+    ├─ 是 → 缩小 scope：对该宏单独建黑盒边界 / 分层验证（§8）
+    │ 是否缺变换日志？
+    ├─ 是 → 补 SVF/变换日志（§6）让匹配在更细粒度截断 cone
+    │ 仍 abort？
+    └─ 手动 compare point / 内部等价对引导（§3.1 第 4 来源），最后才是放宽资源限制硬算
+```
+
+**签核纪律**：abort 数 > 0 的 LEC 结果 **不可等同 pass** — 13 章质量门要求 proven 覆盖全部 compare point 或每个 abort 有 waiver 记录。
+
+### 5.4 时序证明的收敛条件
+
+§4 的 sequential equivalence 内部分两层：
+
+| 技术 | 证明力 | 何时够用 |
+|------|--------|----------|
+| **BMC**（有界展开 k 个周期） | 只证「k 周期内无反例」 | 找 bug 快；**不构成完整证明** |
+| **k-induction** | base（k 周期无反例）+ step（任意 k 等价状态推出 k+1 等价）闭合 → **完整** | FF 对齐良好时 k 很小（常 k=1） |
+| **Retiming/pipeline 等价** | latency 差 d 进入证明目标：`R(t) = I(t+d)` | 06 §8 retiming 后（§9） |
+
+Induction 不闭合（inconclusive）的典型根因：两侧 **状态编码不同**（FSM re-encoding，02 §7.3）且无 state mapping — 引擎无法构造归纳不变式。
+
+**Incremental verify**：层次化时 **子模块先证**，顶层 miter **缩小**（§8）。
 
 ---
 
@@ -164,15 +233,43 @@ Cycle 2+: 数据路径 XOR 判差
 | Memory | 数组 vs 宏 **端口序** 不一致 |
 | async 控制 | reset 极性或 **recovery/removal** 未对齐 |
 
+### 7.1 不等价 debug 流（内部机制）
+
+SAT 返回 falsified 后，引擎不是只丢一个波形，而是走 **反例缩小 → 锥定位** 流程：
+
+```text
+① SAT 满足赋值（全部 PI / 伪 PI / 初态的具体值）
+    │ 反例最小化：逐位翻转赋值，仍 diff=1 则该位无关 → 缩到最小触发集
+    ▼
+② 最小反例向量（往往只剩 2–3 个关键输入）
+    │ 沿 miter 仿真该向量，标记 R/I 两锥中 值不同的第一层内部 net
+    ▼
+③ 最小 diff cone（两侧分歧的最浅子锥）
+    │ 判定分支：
+    ├─ 分歧点在 compare point 配对本身 → 匹配错误（修 §3 配对/补日志），非真不等价
+    ├─ 分歧涉及 X / 未约束 pin（scan_en、test_si）→ 假设不一致（补 set_case_analysis / 约束）
+    └─ 分歧在功能锥内部且假设一致 → 真不等价（综合 bug 或 RTL 修改未同步）
+    ▼
+④ 对照变换日志（§6）：分歧锥涉及哪条 compile 变换 → 定位到 pass
+```
+
+| Debug 信号 | 优先怀疑 |
+|------------|----------|
+| 反例发生在 **cycle 0**（复位期） | reset 极性 / 复位序列假设（案例 4.2） |
+| 反例含 **scan/test pin = 1** | DFT pin 未 constrain（[12 §4](./12-dft-and-scan.md)） |
+| 大批 compare point 同时 falsified | 系统性假设错（case_analysis、X 策略），**不是** 逐点逻辑错 |
+| 单点 falsified、锥很小 | 真不等价，人工可读懂 — 直接看 diff cone |
+
 ### 输入/输出案例 7.1
 
 **Counter-example（概念）**：
 
 ```text
-rst_n=0, d=1, clk edge … → R.q=0, I.Q=1  → diff=1 → 不等价
+原始赋值：rst_n=0, d=1, scan_en=0, b=1, c=0 … → R.q=0, I.Q=1 → diff=1
+最小化后：rst_n=0（其余无关）
 ```
 
-常因 **reset 极性** 或 **scan 模式 pin** 未约束。
+**输出（定位）**：触发集只剩复位 pin、且在 cycle 0 → 走 §7.1 分支「复位期反例」→ 查 I 侧 `.RN` 极性 — 匹配错误类，**不是** 组合逻辑不等价。
 
 ### 输入/输出案例 7.2 — 黑盒 miter 截断
 
@@ -189,7 +286,7 @@ R: SRAM 行为模型（RTL）     I: SRAM 硬宏 .lib 黑盒
 
 ## 8. 层次化 LEC（内部）
 
-与 [10 章](./10-hierarchical-block-synthesis.md) 配合：
+与 [11 章](./11-hierarchical-block-synthesis.md) 配合：
 
 ```text
 Block A: miter(A_R, A_I) → proven
@@ -215,7 +312,7 @@ Top:     仅 glue + 接口 compare points
 
 ## 10. 与交付
 
-LEC **Pass** 是 [12 章](./12-deliverables-and-handoff.md) PnR 前 **质量门**；与 WNS 无关（见 [07 §5](./07-synthesis-reports.md#5-内部量与-lec-的关系)）。
+LEC **Pass** 是 [13 章](./13-deliverables-and-handoff.md) PnR 前 **质量门**；与 WNS 无关（见 [08 §8](./08-synthesis-reports.md#8-内部量与-lec-的关系)）。
 
 ---
 
@@ -233,6 +330,6 @@ LEC **Pass** 是 [12 章](./12-deliverables-and-handoff.md) PnR 前 **质量门*
 ## 下一节
 
 - [06 Retiming](./06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡)
-- [10 层次化综合](./10-hierarchical-block-synthesis.md)
-- [11 DFT](./11-dft-and-scan.md)
-- [12 交付](./12-deliverables-and-handoff.md)
+- [11 层次化综合](./11-hierarchical-block-synthesis.md)
+- [12 DFT](./12-dft-and-scan.md)
+- [13 交付](./13-deliverables-and-handoff.md)

@@ -231,6 +231,19 @@ arrival(n) = max( arrival(inputs) ) + cell_delay(cover)
 | **-area** | 最小化 **单元总面积** |
 | **-balance** | 折中 |
 
+**Required 也参与（AT+RT 双端）**：纯 forward arrival 会对 **所有锥** 求最快——浪费面积。时序驱动映射实际是两趟：
+
+```text
+① forward：每节点每 cut 算 arrival（最快可达时间）
+② backward：从 PO 的 required（period − output 预算，05 §5.1）反传
+     required(fanin) = required(n) − cell_delay(cover)
+③ 节点级 slack = required − arrival：
+     slack < 0 区域 → 强制 delay 最优 cover
+     slack ≥ 0 区域 → 在「不破坏 required」前提下选 area 最优 cover
+```
+
+这就是「映射结果关键路径上是大单元/复杂门、非关键区域是小单元」的内部来源；06 在此基础上继续微调（sizing），07 的真实 AT/RT 接管估算。
+
 ### 输入/输出案例 4.4
 
 **同一 AIG 锥**，两种策略：
@@ -240,7 +253,7 @@ arrival(n) = max( arrival(inputs) ) + cell_delay(cover)
 | area | 8 | 5 | 1.2ns |
 | timing | 11 | 3 | 0.85ns |
 
-**06 章** 还会在 mapped 结果上 **继续换大号单元**，进一步降 delay。
+双端模式下若该锥 required 富余（slack ≥ +0.3），引擎选 area 方案 — **「能慢则小」**；**06 章** 还会在 mapped 结果上 **继续换大号单元**，进一步降 delay。
 
 ---
 
@@ -291,6 +304,38 @@ assign y = sel ? b : a;
 **输出**：4 个 `MUX2D1` 或 4 组 NAND 网络（**mapped MUX 计数=4 或 NAND 组×4**）。
 
 ---
+
+### 5.1b AOI/OAI 极性匹配与 pin 置换
+
+复杂单元（AOI21、OAI22、AO222 等）是 cover 里「单单元吃多节点」的主力；选中它们要解决 **极性 + 引脚排列** 两个匹配问题：
+
+```text
+cut 真值表 ──► NPN 规范形（§4.2）──► 命中库模板（如 OAI21 类）
+                                        │ 但 NPN 变换记录了：
+                                        │   N：哪些输入要取反、输出是否取反
+                                        │   P：输入顺序如何置换
+                                        ▼
+                          回放变换 → 具体 pin 绑定方案
+```
+
+| 匹配步骤 | 内部动作 |
+|----------|----------|
+| **输入取反** | AIG inv 边与单元 **固有反相**（NAND/NOR/AOI 自带输出反相）对消；剩余的反相用 INV 或换极性变体单元 |
+| **Pin 置换** | AOI21 的 A1/A2（AND 组）与 B（直通）**电气不对称**（内部晶体管栈位置不同 → arc delay 不同）：关键信号绑到 **快 pin**（06 §2.6 pin swap 是同一自由度的映射后再利用） |
+| **输出反相** | 输出 inv 边 → 优先级联到下游单元的输入反相，最后才插 INV |
+
+**为何 OAI21 优于 OR+NAND 两级**：单 CMOS 级（一个栅栏堆叠）实现 `!((a|b)&c)` — 比两级单元 **少一次完整摆幅翻转**，delay 和功耗都省；代价是输入电容更大、驱动更弱（栈深限制）— 这就是库中 AOI/OAI 只做到 222 左右的原因。
+
+### 输入/输出案例 5.1b
+
+**Cut 函数**：`y = ~((a & b) | c)`，AIG 上 c 带 inv 边。
+
+| 候选 cover | 级数 | 反相处理 |
+|------------|------|----------|
+| AND + NOR | 2 | c 的 inv 需显式 INV → 3 单元 |
+| **OAI21**（pin: A1=a, A2=b, B=~c？） | 1 | OAI21 实现 `~((A1&A2)|B)`… 真值表比对后 **B 绑 c 原线即可**，inv 边被输出反相对消 |
+
+NPN 回放确定最终绑定：1 个单元、0 个额外 INV — 这类「反相吸收」正是 §4.3 表中 inv 边不显式出现的机制。
 
 ### 5.2 XOR 链（`map_xor_chain.sv`）
 

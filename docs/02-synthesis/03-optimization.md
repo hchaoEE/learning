@@ -396,6 +396,48 @@ sum = a + b + c;
 | AIG level | 18 | 14 |
 | GTECH_MUX | 200 | 0（已布尔化） |
 
+### 5.9 Don't-care 优化与 Resubstitution
+
+前面各 pass 都是 **功能保持** 的等价改写；还有两类利用 **「环境信息」** 的更强化简：
+
+**① Don't-care（DC）优化** — 节点函数不必处处正确，只需在 **可能出现且可被观测** 的输入组合上正确：
+
+| DC 类型 | 来源 | 例子 |
+|---------|------|------|
+| **SDC**（satisfiability DC） | 某些输入组合 **不可能出现**（上游逻辑约束） | one-hot 编码线不会同时为 1 |
+| **ODC**（observability DC） | 节点输出在某些条件下 **不影响任何 PO**（下游屏蔽） | `y = s ? f : g`：s=0 时 f 的值无关 |
+
+```text
+利用方式：对窗口内节点，把 SDC/ODC 组合视为「随便取值」
+   → 真值表自由度变大 → 更小的实现可选
+   计算：窗口仿真 + SAT 证伪（精确 ODC 全局算代价高，工业用局部窗口近似）
+```
+
+**② Resubstitution（resub）** — 用 **网络中已有的节点** 重新表达目标节点：
+
+```text
+目标：y = a·b + a·c        已有节点：t = b + c（别处已计算）
+resub：y = a·t             — 删掉 y 的私有锥，复用 t（fanout +1）
+```
+
+| 与其他 pass 的关系 | 说明 |
+|--------------------|------|
+| vs rewrite（§5.2） | rewrite 在 **窗口内造新结构**；resub **复用窗口外已有信号** — 互补，ABC 默认流程两者交替 |
+| vs CSE（§5.7） | CSE 找 **句法相同** 的子式；resub 找 **功能可表达**（不要求结构相同），更强也更贵（需 SAT/仿真验证候选） |
+| vs DC | resub 候选验证常 **带 DC 做**：在 care set 上等价即可替换 — 两者天然配合 |
+
+### 输入/输出案例 5.9
+
+**输入**：`y = (a&b) | (a&c)`，网络别处已有 `t = b|c`；且上游保证 `b,c` 不同时为 1（SDC）。
+
+| 步骤 | 节点数变化 |
+|------|------------|
+| 原始 y 锥 | 3 AND/OR 节点（私有） |
+| resub：`y = a & t` | 1 节点 + 复用 t |
+| 若再用 SDC（b,c 互斥）化简 t 的下游使用 | 下游比较锥可进一步折叠 |
+
+**LEC 注意**：DC 优化后两侧在 **don't-care 输入组合** 上行为可以不同 — LEC 的 miter 若不带同样的输入约束（[10 §2](./10-logical-equivalence-checking.md#2-核心数据结构) 前提 ②），会报「假不等价」。
+
 ---
 
 ## 6. 与 ABC 流程对照
@@ -411,6 +453,7 @@ strash → rewrite → refactor → balance → map
 | `strash` | 结构性 dedup |
 | `rewrite` | 小窗 NPN 替换 |
 | `refactor` | 大窗重组 |
+| `resub` | 已有节点替换（§5.9） |
 | `balance` | depth 平衡 |
 | `map` | [04](./04-technology-mapping.md) technology mapping |
 
@@ -437,11 +480,24 @@ strash → rewrite → refactor → balance → map
 | 强调 `max_area` | 偏重 rewrite 减节点 |
 | 紧 `create_clock` | 偏重 balance 减 level |
 
-### 输入/输出案例
+### 7.1 无 .lib 时 delay 从哪来（virtual mapping）
 
-**输入**：`create_clock -period 1.0`（1ns），当前估算 level=20 > 允许
+此阶段还没绑定单元，引擎用 **技术无关 delay 模型** 估时序：
 
-**输出**：工具 **提高 balance 权重**；节点可能 +5%，level 20→15。
+| 模型 | 估法 | 精度 |
+|------|------|------|
+| **Unit delay（level）** | 每 AIG 节点 = 1 单位；路径 delay = level 数 | 粗，但单调可比 |
+| **加权 level** | 高 fanout 节点加罚（fanout 影响真实负载） | 中 |
+| **虚拟库** | 用「平均 NAND2」的 delay/load 常数当全体节点参数 | 中；可与 period 直接换算 |
+| **历史反馈** | 上一轮 04/06 的 mapped 结果回标 AIG 区域 | compile 多轮迭代时最准 |
+
+**Required 反传**：`create_clock` 的 period 换算成 **允许 level 上限**（period ÷ 平均每级 delay），再从 PO/FF 边界 **反向传播** 到每个 AIG 节点 → 节点级「虚拟 slack」。balance/rewrite 的窗口选择按虚拟 slack 排序 — **负 slack 区域优先 balance（减 level），正 slack 区域优先 rewrite（减节点）**。这就是 §7 表中「权重」的内部来源，与 [04 §9](./04-technology-mapping.md#9-约束如何改变-mapping) 映射 cost、[07 §3](./07-internal-sta-and-qor.md#3-at--rt-传播算法) 真实 AT/RT 形成「粗 → 映射 → 精」三级递进。
+
+### 输入/输出案例 7.1
+
+**输入**：`create_clock -period 1.0`（1ns），虚拟库平均每级 0.05 ns → 允许 level ≈ 20；当前最深锥 level=24。
+
+**输出**：该锥虚拟 slack = −4 level → 工具 **提高 balance 权重**；节点可能 +5%，level 24→17；正 slack 锥不动（保面积）。
 
 ---
 
@@ -555,7 +611,7 @@ AIG 中 **一个** 2-input AND 节点即可；映射时 **一个** `ND2` 或 `AN
 | GTECH_MUX 实例 | 200 | 0 | 已布尔化进 AIG |
 | 映射前 area 估计 | — | ↓ | 尚未 bind 单元，但结构已瘦 |
 
-→ 索引见 [07 章](./07-synthesis-reports.md#2-用内部量判断还在哪一阶段)。
+→ 索引见 [08 章](./08-synthesis-reports.md#2-用内部量判断还在哪一阶段)。
 
 ---
 

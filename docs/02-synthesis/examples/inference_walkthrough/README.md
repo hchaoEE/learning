@@ -109,8 +109,8 @@ FSM u_fsm:
   encoding      = binary | onehot（策略）
 ```
 
-**Re-encoding 提醒**：编码改变后 LEC 需 state mapping（02 §7.3、09 §6）。
+**Re-encoding 提醒**：编码改变后 LEC 需 state mapping（02 §7.3、10 §6）。
 
 ---
 
-→ 内部量索引 [07 章](../../07-synthesis-reports.md)。
+→ 内部量索引 [08 章](../../08-synthesis-reports.md)。

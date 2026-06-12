@@ -77,7 +77,7 @@ DFFX1×8                   u_q
 
 ---
 
-## 6. 签核侧（09，概念）
+## 6. 签核侧（10，概念）
 
 - **Compare points**：`q[7:0]` ↔ 8 FF Q；PO 若仅 `q` 则 8+1 点
 - **MULT 宏**：R/I 均须 **同黑盒** 或同 IP 模型
@@ -87,7 +87,7 @@ DFFX1×8                   u_q
 ## 阅读链接
 
 ```text
-mini_chain → 01 elab → 02 推断 → 03 AIG → 04 map → 05 SDC → 06 TDO → 09 LEC
+mini_chain → 01 elab → 02 推断 → 03 AIG → 04 map → 05 SDC → 06 TDO → 10 LEC
 ```
 
 各阶段详述见对应章 + 专题 walkthrough。

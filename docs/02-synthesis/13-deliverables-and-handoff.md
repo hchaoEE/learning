@@ -1,4 +1,4 @@
-# 2.12 综合交付物与后端交接
+# 2.13 综合交付物与后端交接
 
 `compile`、LEC、DFT 完成后，需向后端（PnR）与签核团队交付 **一致、可重现** 的文件包。本章列出 **交付清单、版本一致性、签核门控**。
 
@@ -13,7 +13,7 @@
 | **UPF** `*.upf` | 低功耗意图 | power intent 层 |
 | **DDC/NDM** | 工具数据库 | 同工具链增量 |
 | **SDF**（可选） | 延时标注 | 仿真 |
-| **SVF / 变换日志** | 综合结构变换记录 | LEC 匹配引导（[09 §6](./09-logical-equivalence-checking.md#6-综合引导信息transformation-log)） |
+| **SVF / 变换日志** | 综合结构变换记录 | LEC 匹配引导（[10 §6](./10-logical-equivalence-checking.md#6-综合引导信息transformation-log)） |
 | **LEC 报告** | 等价性 | 质量门控 |
 | **Scan DEF/CTL**（若 DFT） | 链定义 | ATPG、PnR |
 | **综合报告** | QoR 摘要 | 项目管理 |
@@ -30,6 +30,31 @@
 |------|------|
 | 无 SDC | PnR **无目标** |
 | 网表与 SDC 版本不一 | **虚假违例** |
+
+### 1.1 层次化设计的分包结构
+
+分块综合（[11 章](./11-hierarchical-block-synthesis.md)）时交付不是一个包，而是 **块包 × N + 顶层包**，且版本须 **锁步**：
+
+```text
+release/synth_v1.2/
+├── blocks/
+│   ├── cpu_core/   ── netlist + block SDC + abstract(ILM/ETM) + 块 LEC 报告 + scan CTL
+│   └── dsp/        ── 同上
+├── top/            ── glue netlist + 顶层 SDC + 块实例化关系 + 顶层 LEC（块黑盒化）
+└── manifest        ── 各块 revision ↔ abstract revision ↔ 顶层所引版本 的绑定表（§2.3）
+```
+
+| 锁步规则 | 违反后果 |
+|----------|----------|
+| 顶层引用的 abstract 必须由 **同 revision 块网表** characterize（11 §3.3） | 顶层 STA 数字与真实块不符 — 最隐蔽的交付事故 |
+| 块重综合 → abstract、块 LEC、scan CTL **三件同步重发** | 旧 abstract + 新网表 = 接口时序假闭合 |
+| 块 SDC 的 budget 版本与顶层分配记录一致（11 §4.1） | 双方对同一接口各自假设 → timing debt 无人认领 |
+
+| **DFT 交付细项**（呼应 [12 章](./12-dft-and-scan.md)） | 内容 |
+|---|------|
+| Scan protocol 文档 | 链数、每链长度、SI/SO/SE 端口映射、压缩结构（内链数、压缩比） |
+| **Test mode SDC**（独立 constraint view） | test clock、shift/capture case 设定 — 与 functional SDC 配对交付（05 §6 mode 表） |
+| OCC 控制说明 | at-speed capture 时钟序列 |
 
 ---
 
@@ -63,6 +88,28 @@
 
 详见 [05 §6 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)。
 
+### 2.3 可重现性 manifest（compile 重现包）
+
+「能 `read_verilog` 」≠「能 **重现这次 compile**」— ECO 增量（§8）与事故追溯都要求后者。重现最小集：
+
+| 项 | 为什么少了不行 |
+|----|------------------|
+| RTL 文件清单 + **内容 hash**（或 git tag） | tag 可被移动；hash 才唯一 |
+| `.lib` 全集（含版本号）+ corner→lib 映射 | 同名 lib 不同 patch → delay 不同 → transform 序列分叉 |
+| MCMM scenario 表（mode × corner × SDC 文件） | 缺一个 mode → hold 修复行为不同 |
+| UPF 版本 | 特殊单元插入位置变 |
+| 工具 build id + 关键策略变量 | 启发式版本不同 → 结果不可比 |
+| **属性导出**：`dont_touch` / `dont_use` / `size_only` 全集 | 这些常在交互式会话设置，**不在 SDC 里** — 丢失后 ECO 重综合会动不该动的区域 |
+| 原始约束 vs `write_sdc` 导出的 **差异说明** | 工具导出会展开通配/补默认值 — 两者语义近似但不相同，回读须用哪份要写明 |
+
+### 输入/输出案例 2.3
+
+**场景**：流片前 ECO（§8）需对 v1.2 做增量 compile。
+
+| manifest 完整 | manifest 缺 dont_touch 导出 |
+|----------------|------------------------------|
+| 重建会话 → 增量 compile 只动目标锥 → 3 cell 差异 | 重建会话丢失 36 个 dont_touch → compile「顺手优化」了冻结区 → 6,200 cell 差异，PnR 侧 ECO 不可行 |
+
 ---
 
 ## 3. 签核门控（Quality Gates）
@@ -72,11 +119,21 @@
 □ timing graph：无 unclocked FF（05 §2）
 □ WNS/TNS / hold：各 MCMM corner 闭合（06）
 □ transition/cap：DRC 无违例（06 §5）
-□ LEC：miter UNSAT（09）
-□ DFT：scan IR 完成（若适用）（11）
-□ 推断：LATCH 计数=0（02/07）
-□ UPF：域标注与 LS/ISO 实例一致（08）
+□ LEC：miter UNSAT（10）
+□ DFT：scan IR 完成（若适用）（12）
+□ 推断：LATCH 计数=0（02/08）
+□ UPF：域标注与 LS/ISO 实例一致（09）
 ```
+
+**对外交付的不只是布尔 checklist** — 后端需要「带证据的 release」：
+
+| 附件 | 内容 | 呼应 |
+|------|------|------|
+| **STA/QoR 摘要** | 每 MCMM corner 的 WNS/TNS/THS、违例 endpoint 数、面积/功耗分项 | 07 §6、08 §5–§6 |
+| **Waiver 清单** | 已知且接受的违例（路径、原因、批准人）— timing/DFT/UPF 各一节 | LEC abort 的 waiver 见 10 §5.3 |
+| **约束完整性报告** | unclocked FF 数、空对象集 SDC 命令、unconstrained endpoint 列表 | 05 §8、07 §5 |
+
+Waiver 不是「忽略」：PnR/签核侧须 **继承同一份 waiver**，否则下游重新发现 → 重复诊断成本。
 
 ### 输入/输出案例
 
@@ -84,6 +141,7 @@
 
 ```text
 LEC: 3 failing points → 禁止 handoff
+LEC: 2 aborted points + 已批准 waiver（datapath 宏，块级已证）→ 可放行，waiver 随包交付
 ```
 
 ---
@@ -163,7 +221,7 @@ Incremental compile：只重综合受影响锥
     ▼
 ECO netlist（与旧网表差异最小化）
     │
-    ├──► 增量 LEC：旧 I ↔ 新 I（仅比受影响锥；呼应 09 §1 表 ECO 行）
+    ├──► 增量 LEC：旧 I ↔ 新 I（仅比受影响锥；呼应 10 §1 表 ECO 行）
     └──► 新 RTL ↔ 新 I 全量或分治 LEC
 ```
 
@@ -173,7 +231,7 @@ ECO netlist（与旧网表差异最小化）
 | **名字保持** | 未动区域 instance/net 名与旧网表一致，否则 PnR 侧无法对位 |
 | **冻结约束** | 已布线区域（若 PnR 后 ECO）的 cell 位置/层资源受限 → 综合侧只允许 **同 footprint 换型 / 小锥重组** |
 | **寄存器不可增删**（freeze 模式下） | 增 FF = 时钟树/scan 链都要改 → 通常禁止，或走完整 re-spin |
-| **DFT 同步** | 受影响锥含 scan FF 时，scan 链顺序须保持或重新声明（11） |
+| **DFT 同步** | 受影响锥含 scan FF 时，scan 链顺序须保持或重新声明（12） |
 
 **与 PnR 侧 spare cell ECO 的分工**：综合侧产出 **逻辑上正确且差异最小** 的 ECO netlist；如何用 spare cell / 金属层改动实现，属 PnR 范围（见 [03-pnr](../03-pnr/)）。
 
@@ -201,13 +259,14 @@ ECO netlist（与旧网表差异最小化）
 | 映射 | 04 |
 | 约束 | 05 |
 | 修 setup/hold、multibit banking | 06 |
-| 读内部量 / 阶段诊断 | 07 |
-| 低功耗 | 08 |
-| **LEC** | **09** |
-| 分块综合 / boundary optimization | 10 |
-| **DFT/scan** | 11 |
-| **交什么文件** | **12（本章）** |
-| **交付后改 bug（ECO）** | 12 §8 |
+| 内部 STA / QoR 聚合 | 07 |
+| 读内部量 / 阶段诊断 | 08 |
+| 低功耗 | 09 |
+| **LEC** | **10** |
+| 分块综合 / boundary optimization | 11 |
+| **DFT/scan** | 12 |
+| **交什么文件** | **13（本章）** |
+| **交付后改 bug（ECO）** | 13 §8 |
 
 ---
 
@@ -220,5 +279,5 @@ ECO netlist（与旧网表差异最小化）
 ## 下一节
 
 - [03-pnr](../03-pnr/)
-- [09 LEC](./09-logical-equivalence-checking.md)
+- [10 LEC](./10-logical-equivalence-checking.md)
 - [00 总览](./00-synthesis-overview.md)
