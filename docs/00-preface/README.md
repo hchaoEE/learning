@@ -14,7 +14,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| [glossary.md](./glossary.md) | 全文术语表，阅读各章时可随时查阅 |
+| [glossary.md](./glossary.md) | 术语入口；**完整详解**见 [../glossary.md](../glossary.md) |
 | eda-toolchain-overview.md | （待写）Synopsys/Cadence/Siemens 等工具在流程中的位置 |
 
 ## 学习建议

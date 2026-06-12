@@ -8,7 +8,7 @@
 
 | 阶段 | 目录 | 前置知识 | 产出能力 |
 |------|------|----------|----------|
-| 0 | [00-preface](./00-preface/) | 数字电路基础 | 统一术语、了解工具链 |
+| 0 | [00-preface](./00-preface/) + [**专业词汇表**](./glossary.md) | 数字电路基础 | 统一术语、了解工具链 |
 | 1 | [01-rtl](./01-rtl/) | Verilog 入门更佳 | 写出可综合、可维护的 RTL |
 | 2 | [02-synthesis](./02-synthesis/) | 完成 01-rtl | 理解综合报告、约束与优化 |
 | 3 | [03-pnr](./03-pnr/) | 完成 02-synthesis | 理解时序收敛与物理效应 |
@@ -22,10 +22,11 @@
 ```text
 docs/
 ├── README.md                          # 本文件：总索引与学习路径
+├── glossary.md                        # ★ 专业词汇表（strash、CSA、AIG…详解）
 │
 ├── 00-preface/                        # 前言与基础
 │   ├── README.md
-│   ├── glossary.md                    # 术语表（RTL、SDC、LEF/DEF…）
+│   ├── glossary.md                    # 术语表入口 → 见 ../glossary.md
 │   └── eda-toolchain-overview.md      # 综合 / PnR / STA 工具角色（待写）
 │
 ├── 01-rtl/                            # ★ 当前重点：RTL 与可综合写法

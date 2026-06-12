@@ -240,7 +240,8 @@ flag = 0              → PO 可接 tie-0，AIG 中 flag 锥 **被删**
 ---
 
 ## 5. 典型粗粒度 Pass
-> **一句话**：在 AIG 上反复跑 strash/rewrite/balance 等 pass，像编译器对 IR 做多轮 peephole 与 CSE。
+> **一句话**：在 AIG 上反复跑 strash/rewrite/balance 等 pass，像编译器对 IR 做多轮 peephole 与 CSE。  
+> **术语**：[strash、CSA 树、resub 等详解](../glossary.md#4-粗优化与-aig-pass详解)
 > **类比**：与 `clang -O2` 的 pass 管道类似——每轮只改局部结构，全局靠迭代收敛。
 
 粗优化 pass 在 **同一 AIG IR** 上循环，直到 node/level 收敛或达到 effort 上限。常见顺序（与 ABC 同类）：
