@@ -496,7 +496,7 @@ Mapped netlist
 | **Congestion** | 高拥塞区域 **提高插入 buffer 的成本** 或禁止过密 sizing |
 | **Cell density** | 引导换 **更小 footprint** 单元 |
 
-**边界**：综合阶段仍是 **估计**；真寄生与 SI 在 PnR 后 STA。06 的目标是把 **明显不可布** 的长线/高扇出 提前修掉，减少后端迭代。
+**边界**：综合阶段仍是 **估计**；真寄生与 SI 在 PnR 后 STA。06 的目标是把 **明显不可布** 的长线/高扇出 提前修掉，减少后端迭代。多 die / Chiplet 的 **die 间弧** 建模与 transform 约束见 [15 章](./15-3d-ic-synthesis.md)。
 
 ### 输入/输出案例 6.1
 

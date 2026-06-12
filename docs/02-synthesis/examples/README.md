@@ -15,6 +15,7 @@
 | [lec_walkthrough/](./lec_walkthrough/) | [10 章](../10-logical-equivalence-checking.md) miter / Cycle0 反例 |
 | [dft_walkthrough/](./dft_walkthrough/) | [12 章](../12-dft-and-scan.md) scan 模式 / 压缩 / lockup |
 | [hier_walkthrough/](./hier_walkthrough/) | [11 章](../11-hierarchical-block-synthesis.md) budget / 层次 LEC |
+| [3dic_walkthrough/](./3dic_walkthrough/) | [15 章](../15-3d-ic-synthesis.md) 跨 die timing / TSV 弧 |
 
 阅读顺序建议：**mini_chain** → 各专题 walkthrough。
 

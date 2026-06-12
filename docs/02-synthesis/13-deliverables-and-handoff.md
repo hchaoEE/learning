@@ -314,6 +314,7 @@ ECO netlist（与旧网表差异最小化）
 | **交什么文件** | **13（本章）** |
 | **交付后改 bug（ECO）** | 13 §8 |
 | **学术界 LS / AI+EDA 进展** | [14](./14-academic-research-survey.md) |
+| **3D IC / Chiplet 分 die 交付** | [15](./15-3d-ic-synthesis.md) |
 
 ---
 

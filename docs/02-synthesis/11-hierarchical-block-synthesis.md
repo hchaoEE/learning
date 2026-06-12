@@ -30,7 +30,7 @@
 | **Bottom-up** | 顶层实例化 **子块 shell**（内部 blackbox 或已映射） | 子块内 **全 pass**；顶层 **仅 glue** |
 | **Top-down** | 单 DB，工具 **partition** | 边界可能 **模糊** |
 
-量产 ASIC 多用 **Bottom-up + interface model**。
+量产 ASIC 多用 **Bottom-up + interface model**。当子块对应 **物理 die** 时，interface 还须叠加 TSV/凸点弧 — 见 [15 章](./15-3d-ic-synthesis.md)。
 
 ```text
 Block A DB: 完整 RTL_A → mapped_A + abstract_A

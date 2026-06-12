@@ -57,7 +57,8 @@ docs/
 │   ├── 11-hierarchical-block-synthesis.md
 │   ├── 12-dft-and-scan.md
 │   ├── 13-deliverables-and-handoff.md
-│   └── 14-academic-research-survey.md
+│   ├── 14-academic-research-survey.md
+│   └── 15-3d-ic-synthesis.md
 │
 ├── 03-pnr/                            # 布局布线（待展开）
 │   ├── README.md
