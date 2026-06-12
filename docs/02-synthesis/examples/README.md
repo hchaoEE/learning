@@ -3,7 +3,7 @@
 | 目录 | 用途 |
 |------|------|
 | [mini_chain/](./mini_chain/) | **端到端** IR 快照（01→06 全链） |
-| [elab_walkthrough/](./elab_walkthrough/) | [01 章](../01-rtl-parsing-and-elaboration.md) 各阶段 IR |
+| [elab_walkthrough/](./elab_walkthrough/) | [01 章 §2 一条龙](../01-rtl-parsing-and-elaboration.md#2-完整案例走读top--child一条龙) + 各阶段 IR |
 | [inference_walkthrough/](./inference_walkthrough/) | [02 章](../02-inference.md) 推断 DB 字段 |
 | [aig_walkthrough/](./aig_walkthrough/) | [03 章](../03-optimization.md) AIG pass |
 | [mapping_walkthrough/](./mapping_walkthrough/) | [04 章](../04-technology-mapping.md) cover 选择 |
