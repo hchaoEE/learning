@@ -1,10 +1,15 @@
 # 2.13 综合交付物与后端交接
 
+> **本章回答**：综合结束要交什么、如何保证 PnR 能接上。
+> **读完应能**：① 列出最小交付包 ② 说清 corner/MCMM 锁步 ③ 知道 ECO 与 manifest 关系
+> **先修**：[05](./05-constraints-sdc.md)、[10](./10-logical-equivalence-checking.md) · **难度**：★★☆☆☆ · **walkthrough**：—
+
 `compile`、LEC、DFT 完成后，需向后端（PnR）与签核团队交付 **一致、可重现** 的文件包。本章列出 **交付清单、版本一致性、签核门控**。
 
 ---
 
 ## 1. 标准交付清单
+> **一句话**：标准交付清单——本章核心机制点。
 
 | 文件 | 内容 | DB / 内部语义 |
 |------|------|---------------|
@@ -56,9 +61,21 @@ release/synth_v1.2/
 | **Test mode SDC**（独立 constraint view） | test clock、shift/capture case 设定 — 与 functional SDC 配对交付（05 §6 mode 表） |
 | OCC 控制说明 | at-speed capture 时钟序列 |
 
+### 输入/输出案例 1.1 — abstract 与块 revision 锁步
+
+**输入**：`cpu_core` 重综合为 `rev_B`；顶层仍引用 `abstract_rev_A`。
+
+| manifest 项 | rev_A（旧） | rev_B（新） | 顶层引用 |
+|-------------|-------------|-------------|----------|
+| 块网表 | v1.1 | **v1.2** | v1.1 |
+| abstract | ILM_A | **须重发 ILM_B** | **ILM_A** ← 错 |
+
+**输出**：顶层 STA 用旧 ILM → 接口 **假闭合**；须 manifest 绑定 **同 revision 三件**（网表 + abstract + 块 LEC）。
+
 ---
 
 ## 2. 版本、Corner 与 MCMM 一致性
+> **一句话**：版本、Corner 与 MCMM 一致性——本章核心机制点。
 
 交付包须使 PnR/STA 与综合 **同一 topology、同一 corner/mode 集**。
 
@@ -72,6 +89,12 @@ release/synth_v1.2/
 | RTL git tag | 无法追溯 **哪次 compile** |
 | 工具 build id | DB 语义差异 |
 
+### 输入/输出案例 2.1 — corner 集错位
+
+**输入**：综合 signoff `slow_max`+`fast_min`；PnR STA 仅读 `typ`。
+
+**输出**：WNS 符号可能 **翻转** — 综合 +0.05、签核 −0.08 并非「退化」，是 **lib 未对齐**。
+
 ### 2.2 MCMM 表（概念字段）
 
 | 字段 | 含义 |
@@ -81,12 +104,16 @@ release/synth_v1.2/
 | **Constraint view** | 该 mode 下 **生效的 SDC 子集** |
 | **Delay annotation** | 该 corner 的 cell/net 查表 |
 
-### 输入/输出案例 2.1
+### 输入/输出案例 2.2 — functional vs test mode
 
-**综合 DB**：`slow_0p90_max` + `fast_0p90_min` 闭合。  
-**PnR 后 STA**：须读 **同一对** `.lib` + **同一 mode**；若仅用 `typ` signoff → 与综合 **不可比**。
+**输入**：MCMM 表仅列 `func_slow_max`；漏 `test_fast_min`（scan shift）。
 
-详见 [05 §6 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)。
+| mode | constraint view | 后果 |
+|------|-----------------|------|
+| functional | `chip_func.sdc` | 功能闭合 |
+| **test** | **缺失** | shift 路径 **未 STA** → 硅片 fail |
+
+**输出**：交付须 **mode × corner** 全表 + 各 mode 的 SDC 子集（[12 §6](./12-dft-and-scan.md#6-约束语义test-mode)）；corner 对齐见上 **案例 2.1** 与 [05 §6 MCMM](./05-constraints-sdc.md#6-mcmm多-corner-在-db-上的挂接)。
 
 ### 2.3 可重现性 manifest（compile 重现包）
 
@@ -113,6 +140,7 @@ release/synth_v1.2/
 ---
 
 ## 3. 签核门控（Quality Gates）
+> **一句话**：签核门控（Quality Gates）——本章核心机制点。
 
 ```text
 □ Design DB：elaboration / check_design 无 ERROR
@@ -147,6 +175,7 @@ LEC: 2 aborted points + 已批准 waiver（datapath 宏，块级已证）→ 可
 ---
 
 ## 4. 网表交付格式注意
+> **一句话**：网表交付格式注意——本章核心机制点。
 
 ```verilog
 // 须声明
@@ -162,9 +191,22 @@ endmodule
 | 单元名 | 来自目标 `.lib` |
 | 勿删 `dont_touch` 宏 | 与综合一致 |
 
+### 输入/输出案例 4.1 — 网表可读性门控
+
+**输入**：`write_verilog` 输出缺 `` `timescale ``、单元名 `*/` 通配未展开。
+
+| 检查项 | 通过 | 失败后果 |
+|--------|------|----------|
+| `` `timescale 1ns/1ps `` | ✓ | 仿真/STA delay 单位歧义 |
+| 单元名 = `.lib` cell | ✓ | PnR **找不到 ref** |
+| 无 `translate_off` 残留 | ✓ | 综合垃圾进网表 |
+
+**输出**：PnR `read_verilog` 报错或静默错连 — 交付前跑 **lint + 抽样 instantiate**。
+
 ---
 
 ## 5. SDC 交付
+> **一句话**：SDC 交付——本章核心机制点。
 
 - **与网表同名** 或 `chip.sdc` 明确 `current_design`  
 - 含 **clock、IO、exception、case_analysis**（若用）  
@@ -179,6 +221,7 @@ endmodule
 ---
 
 ## 6. 与 PnR 的物理信息
+> **一句话**：与 PnR 的物理信息——本章核心机制点。
 
 综合阶段可选交付：
 
@@ -193,6 +236,7 @@ endmodule
 ---
 
 ## 7. 仿真用网表
+> **一句话**：仿真用网表——本章核心机制点。
 
 | 类型 | 说明 |
 |------|------|
@@ -209,6 +253,7 @@ endmodule
 ---
 
 ## 8. ECO 与增量综合
+> **一句话**：ECO 与增量综合——本章核心机制点。
 
 交付（甚至 PnR）之后发现功能 bug 或小幅 spec 变更，**不重跑全量 compile**，走 ECO 流：
 
@@ -250,6 +295,7 @@ ECO netlist（与旧网表差异最小化）
 ---
 
 ## 9. 综合「方方面面」索引
+> **一句话**：综合「方方面面」索引——本章核心机制点。
 
 | 你想了解 | 章节 |
 |----------|------|
@@ -267,10 +313,23 @@ ECO netlist（与旧网表差异最小化）
 | **DFT/scan** | 12 |
 | **交什么文件** | **13（本章）** |
 | **交付后改 bug（ECO）** | 13 §8 |
+| **学术界 LS / AI+EDA 进展** | [14](./14-academic-research-survey.md) |
+
+---
+
+
+## 知识点清单（自检）
+
+- [ ] 网表+SDC 最小集
+- [ ] corner/MCMM 锁步
+- [ ] manifest 重现 compile
+- [ ] 签核门控清单
+- [ ] ECO 增量与名字保持
 
 ---
 
 ## 10. 小结
+> **一句话**：小结——本章核心机制点。
 
 交付 = **网表 + SDC +（UPF）+ LEC + 报告 + 版本说明**；**corner 一致** 是 PnR 成功前提；交付后小改走 **ECO 增量**（§8）而非全量重综合。
 

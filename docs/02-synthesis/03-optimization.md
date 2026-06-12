@@ -1,5 +1,9 @@
 # 2.3 粗粒度优化：技术无关布尔优化与 AIG
 
+> **本章回答**：映射前如何用 AIG 做技术无关布尔优化。
+> **读完应能**：① 解释 AIG 只有 AND+反相边 ② 列举 strash/rewrite/balance ③ 区分粗优化与 06 细优化
+> **先修**：[02](./02-inference.md) · **难度**：★★★★☆ · **walkthrough**：[aig_walkthrough](./examples/aig_walkthrough/)
+
 > **本章 = 粗粒度优化主章**（映射前、技术无关）。**细粒度**见 [06](./06-timing-driven-optimization.md)。
 
 Elaboration 与 [推断](./02-inference.md) 之后，组合逻辑仍以 **GTECH 运算节点 / MUX 树** 存在；**粗粒度优化** 把它们收成 **AIG（And-Inverter Graph）**，在 **不绑定 .lib 单元** 的前提下做全局化简，再交给 [04 工艺映射](./04-technology-mapping.md)。
@@ -9,6 +13,7 @@ Elaboration 与 [推断](./02-inference.md) 之后，组合逻辑仍以 **GTECH 
 ---
 
 ## 1. 在流程中的位置
+> **一句话**：在流程中的位置——本章核心机制点。
 
 ```text
 02 推断（REG/RAM/MULT 标签）
@@ -35,6 +40,7 @@ Elaboration 与 [推断](./02-inference.md) 之后，组合逻辑仍以 **GTECH 
 ---
 
 ## 2. 为何用 AIG
+> **一句话**：为何用 AIG——本章核心机制点。
 
 | 对比 | 结构网表（GTECH） | AIG |
 |------|-------------------|-----|
@@ -85,6 +91,7 @@ b ──┘
 ---
 
 ## 3. GTECH 组合云 → AIG（Lowering）
+> **一句话**：GTECH 组合云 → AIG（Lowering）——本章核心机制点。
 
 ```text
 1. 提取组合逻辑锥（跳过 REG、RAM 时序壳）
@@ -168,6 +175,7 @@ always_ff @(posedge clk) q <= sum + 1'b1;
 ---
 
 ## 4. AIG 数据结构（内部）
+> **一句话**：AIG 数据结构（内部）——本章核心机制点。
 
 ```text
 AigNode: left, right, left_inv, right_inv  → 2-input AND
@@ -232,6 +240,8 @@ flag = 0              → PO 可接 tie-0，AIG 中 flag 锥 **被删**
 ---
 
 ## 5. 典型粗粒度 Pass
+> **一句话**：在 AIG 上反复跑 strash/rewrite/balance 等 pass，像编译器对 IR 做多轮 peephole 与 CSE。
+> **类比**：与 `clang -O2` 的 pass 管道类似——每轮只改局部结构，全局靠迭代收敛。
 
 粗优化 pass 在 **同一 AIG IR** 上循环，直到 node/level 收敛或达到 effort 上限。常见顺序（与 ABC 同类）：
 
@@ -317,6 +327,24 @@ a ──AND──AND──AND──AND── y   level=4
 
 **权衡**：balance 常 **增节点、减 depth** — 与 rewrite **相反方向**，引擎按 **面积/level 权重** 折中。
 
+### 输入/输出案例 5.4 — 六输入链 balance（`chain_and.sv`）
+
+**输入**（[examples/aig_walkthrough/chain_and.sv](./examples/aig_walkthrough/chain_and.sv)）：
+
+```systemverilog
+assign y = a & b & c & d & e & f;   // 链状 AND，level=5
+```
+
+**输出**（balance pass 后 AIG 统计，示意）：
+
+| 指标 | balance 前 | balance 后 |
+|------|------------|------------|
+| AIG level | 5 | **3** |
+| AND 节点 | 5 | **6**（多 1 个树节点） |
+| 虚拟 slack（§7.1） | −2 level | **0** |
+
+**触发**：`create_clock -period 1.0` + 虚拟库每级 0.05 ns → 允许 level≈20；本锥 level=5 已紧 → 引擎 **提高 balance 权重** 而非 rewrite 减节点。
+
 ### 5.5 常量 / 冗余 / DCE
 
 **动作**：
@@ -324,6 +352,19 @@ a ──AND──AND──AND──AND── y   level=4
 1. 常量传播：PI 或 FF 输出已知 → 子锥折叠  
 2. 死 PO：无 fanout 的锥 **整段删除**  
 3. 见 **§4.2** strash 后的 0/1 锥消除  
+
+### 输入/输出案例 5.5 — 死 PO 删除
+
+**输入**（AIG 片段）：`dead = a & b;`（`dead` 无 fanout）；`y = c | d`（有 PO）。
+
+**输出**：
+
+| 对象 | DCE 前节点 | DCE 后 |
+|------|------------|--------|
+| `dead` 锥 | 1 AND | **删除** |
+| `y` 锥 | 保留 | 不变 |
+
+与 [§4.2 comb_const.sv](./examples/aig_walkthrough/comb_const.sv) 常量折叠互补：DCE 删 **无负载** 锥，常量传播删 **已知值** 锥。
 
 ### 5.6 算术与宏边界
 
@@ -441,6 +482,7 @@ resub：y = a·t             — 删掉 y 的私有锥，复用 t（fanout +1）
 ---
 
 ## 6. 与 ABC 流程对照
+> **一句话**：与 ABC 流程对照——本章核心机制点。
 
 ```text
 strash → rewrite → refactor → balance → map
@@ -473,6 +515,7 @@ strash → rewrite → refactor → balance → map
 ---
 
 ## 7. 时序与面积代价（映射前）
+> **一句话**：时序与面积代价（映射前）——本章核心机制点。
 
 | 模式 | 粗优化倾向 |
 |------|------------|
@@ -502,6 +545,7 @@ strash → rewrite → refactor → balance → map
 ---
 
 ## 8. 寄存器边界
+> **一句话**：寄存器边界——本章核心机制点。
 
 | 类型 | 归属 |
 |------|------|
@@ -518,6 +562,7 @@ strash → rewrite → refactor → balance → map
 ---
 
 ## 9. 常见问题
+> **一句话**：常见问题——本章核心机制点。
 
 | 现象 | 原因 |
 |------|------|
@@ -527,7 +572,19 @@ strash → rewrite → refactor → balance → map
 
 ---
 
+
+## 知识点清单（自检）
+
+- [ ] AIG 仅 AND+反相边
+- [ ] strash / rewrite / balance 各改什么
+- [ ] 粗优化不改 FF 拓扑
+- [ ] 与 04 mapping 的接口
+- [ ] AIG 案例或 aig_walkthrough 一例
+
+---
+
 ## 10. 小结
+> **一句话**：小结——本章核心机制点。
 
 | 概念 | 要点 |
 |------|------|
@@ -539,6 +596,7 @@ strash → rewrite → refactor → balance → map
 ---
 
 ## 11. 案例集锦（逐步理解）
+> **一句话**：案例集锦（逐步理解）——本章核心机制点。
 
 以下用 **同一套思维**：RTL → 组合锥 → AIG → pass → 交给映射。
 
@@ -616,6 +674,7 @@ AIG 中 **一个** 2-input AND 节点即可；映射时 **一个** `ND2` 或 `AN
 ---
 
 ## 12. 案例自测（内部对照）
+> **一句话**：案例自测（内部对照）——本章核心机制点。
 
 对照 `examples/aig_walkthrough/`，在纸上追踪 **IR 变化**（无需跑工具）：
 

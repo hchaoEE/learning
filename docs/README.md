@@ -56,7 +56,8 @@ docs/
 │   ├── 10-logical-equivalence-checking.md
 │   ├── 11-hierarchical-block-synthesis.md
 │   ├── 12-dft-and-scan.md
-│   └── 13-deliverables-and-handoff.md
+│   ├── 13-deliverables-and-handoff.md
+│   └── 14-academic-research-survey.md
 │
 ├── 03-pnr/                            # 布局布线（待展开）
 │   ├── README.md
@@ -98,7 +99,7 @@ flowchart LR
 - [x] **01-rtl**：RTL 语法与可综合写法（第一版）
 - [x] 02-synthesis：01 RTL 解析与 Elaboration
 - [x] 02-synthesis：02 推断
-- [x] 02-synthesis：全章（00–13，含内部 STA/LEC/DFT/交付）
+- [x] 02-synthesis：全章（00–14，含内部 STA/LEC/DFT/交付/学术前沿）
 - [x] 02-synthesis：**内部机制深化 + 审视优化**（walkthrough 齐、mini_chain 端到端）
 - [ ] 03-pnr：原理章节
 - [ ] 可运行实验脚本（Yosys/Makefile，可选）

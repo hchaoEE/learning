@@ -1,12 +1,19 @@
 # 2.7 综合内部 STA 引擎与 QoR
 
+> **本章回答**：综合器内部的 timing graph、AT/RT 与 WNS/TNS 怎么算。
+> **读完应能**：① 手推一小图 AT/RT ② 解释 check 边不传播 delay ③ 区分内嵌 STA 与签核 PT
+> **先修**：[05](./05-constraints-sdc.md)、[06](./06-timing-driven-optimization.md) · **难度**：★★★★★ · **walkthrough**：[sta_walkthrough](./examples/sta_walkthrough/)
+
 [06 细粒度优化](./06-timing-driven-optimization.md) 的 transform 闭环、[08 报告](./08-synthesis-reports.md) 的每一行数字、[11 层次化](./11-hierarchical-block-synthesis.md) 的 abstract 模型，都依赖同一个地基：**综合器内部怎么算时序**。本章把这台 **内嵌 STA 引擎** 单独拆开讲：timing graph 怎么建、arrival/required 怎么传播、check 怎么求值、千万个 slack 怎么聚合成 WNS/TNS。
 
 > 本章讲 **引擎机制**；约束如何变成图上标注属 [05 SDC](./05-constraints-sdc.md)，transform 如何消费 slack 属 [06](./06-timing-driven-optimization.md)，报告怎么读属 [08](./08-synthesis-reports.md)。
 
+> 配套跟练：[examples/sta_walkthrough/](./examples/sta_walkthrough/)（五节点 AT/RT 手算表，对齐 §3.1、§4.1）。
+
 ---
 
 ## 1. 定位：一台引擎，多个消费者
+> **一句话**：定位：一台引擎，多个消费者——本章核心机制点。
 
 ```text
             ┌────────────────────────────┐
@@ -37,6 +44,8 @@ LEC（[10](./10-logical-equivalence-checking.md)）**不依赖** 本引擎——
 ---
 
 ## 2. Timing Graph 数据结构
+> **一句话**：Timing Graph 数据结构——本章核心机制点。
+> **类比**：像双向标注每个路口的「最早到达」和「最晚必须到达」。
 
 从 mapped Design DB 建图（04 结束即建，06 全程维护）：
 
@@ -73,6 +82,8 @@ reg_a/CK ──► reg_a/Q ──────► u1/A ──► u1/ZN ──► 
 ---
 
 ## 3. AT / RT 传播算法
+> **一句话**：AT / RT 传播算法——本章核心机制点。
+> **类比**：像双向标注每个路口的「最早到达」和「最晚必须到达」。
 
 ### 3.1 Forward：arrival time（AT）
 
@@ -103,6 +114,8 @@ slack_hold(pin) = AT_min(pin) − RT_hold(pin)
 
 每个 **pin 都有 slack**，不只 endpoint——这正是 06 §2.4「沿路径收集可改 instance」的依据：路径上 slack 最负的弧就是瓶颈弧。
 
+**初学者易错**：只看 endpoint slack 而忽略路径中间 pin——瓶颈常在 **中间 net/cell**；修 06 时应沿 AT/RT 最负的弧下刀，而不是盲目 upsize 最后一级。
+
 ### 3.4 组合环
 
 组合反馈环会让拓扑序失效。引擎 **检测环 → 自动断开一条弧**（`disabled arc` 标记），并告警；被断弧不再传播 AT。`set_disable_timing`（05）是同一机制的手动入口。
@@ -123,6 +136,8 @@ slack_hold(pin) = AT_min(pin) − RT_hold(pin)
 ---
 
 ## 4. Check 求值
+> **一句话**：Check 求值——本章核心机制点。
+> **类比**：像双向标注每个路口的「最早到达」和「最晚必须到达」。
 
 ### 4.1 各类 check 绑哪对边
 
@@ -160,6 +175,8 @@ slack_hold(pin) = AT_min(pin) − RT_hold(pin)
 ---
 
 ## 5. 路径分组与 endpoint 桶
+> **一句话**：路径分组与 endpoint 桶——本章核心机制点。
+> **类比**：像双向标注每个路口的「最早到达」和「最晚必须到达」。
 
 引擎把所有 endpoint（FF/D、PO）按 **起点/终点类型与 clock** 分桶：
 
@@ -193,6 +210,7 @@ slack_hold(pin) = AT_min(pin) − RT_hold(pin)
 ---
 
 ## 6. QoR 聚合
+> **一句话**：QoR 聚合——本章核心机制点。
 
 Violation Scanner 之后，引擎对 endpoint 级 slack 做聚合：
 
@@ -228,6 +246,7 @@ Violation Scanner 之后，引擎对 endpoint 级 slack 做聚合：
 ---
 
 ## 7. Derate / OCV（概念层）
+> **一句话**：Derate / OCV（概念层）——本章核心机制点。
 
 实际硅片上同 die 内单元有快慢差异（on-chip variation）。签核 STA 用 AOCV/POCV 表；**综合内嵌 STA 只用 global derate**：
 
@@ -243,9 +262,22 @@ hold 分析：方向相反
 
 不展开 AOCV 表结构——属签核 STA 范围。
 
+### 输入/输出案例 7.1 — derate 前后 slack
+
+**输入**（与 [06 案例 2.1](./06-timing-driven-optimization.md#输入输出案例-21--映射后初态) 同路径，period=1.0，setup=0.08）：
+
+| 阶段 | data 路径 delay | capture 处理 | slack |
+|------|-----------------|--------------|-------|
+| 无 derate（综合内嵌） | 1.02 | required=0.92 | **−0.10** |
+| +5% late derate on data | 1.02×1.05=1.071 | required 不变 | **−0.151** |
+| 签核 AOCV（示意更悲观） | +8% OCV margin | +uncertainty | **−0.22** |
+
+**输出（判读）**：综合 WNS=+0.02（刚闭合）+ 未开 derate → 签核可能 **−0.15**；交付须留 **WNS margin** 或综合期启用 global derate 与签核对齐。
+
 ---
 
 ## 8. 增量 STA 机制
+> **一句话**：增量 STA 机制——本章核心机制点。
 
 06 每轮 transform 后不重算全图。引擎维护 **脏标记传播**：
 
@@ -283,7 +315,20 @@ transform 触点（换 ref / 插 buffer / 改 net）
 
 ---
 
+
+## 知识点清单（自检）
+
+- [ ] timing graph 四类边
+- [ ] AT forward / RT backward
+- [ ] slack = RT − AT
+- [ ] path group 权重
+- [ ] derate 收紧 margin
+- [ ] sta_walkthrough 案例 A 手推
+
+---
+
 ## 9. 小结
+> **一句话**：小结——本章核心机制点。
 
 - 一台引擎四个消费者：**06 transform、08 报告、11 abstract、13 门控**
 - Graph = pin 节点 + cell/net arc + check 边；AT 前向 max/min、RT 后向，**slack 每 pin 都有**

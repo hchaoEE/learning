@@ -7,6 +7,7 @@
 | 文件 | 说明 |
 |------|------|
 | `simple_ff_path.sv` | 两级 FF，中间组合极短 |
+| `cdc_sync.sv` | 双 FF 跨时钟域（05 §4.3） |
 
 ---
 
@@ -101,8 +102,56 @@ slack 变大 → 该路径不再驱动 WNS
 
 ---
 
+## 案例 F — clock_groups / CDC（05 §4.3）
+
+**RTL**：`cdc_sync.sv` — `clk_a` 域 `sync0` → `clk_b` 域双 FF 同步 → `data_b`。
+
+| 约束 | 跨域路径 check | 典型 WNS |
+|------|----------------|----------|
+| 无 | 公倍周期 setup 检查 | **虚假负**（同步器段被当单周期数据路径） |
+| `set_clock_groups -asynchronous -group {clk_a} -group {clk_b}` | check **删除** | 不报该路径 |
+
+**注意**：同步器 **电路**保证安全；`clock_groups` 只告诉 STA **不要检查** — 二者缺一不可。
+
+---
+
+## 案例 G — max_transition / DRC 先于 timing（05 §7）
+
+**场景**：某 driver net fanout=24，`set_max_transition 0.30`。
+
+| 顺序 | 动作 | 结果 |
+|------|------|------|
+| 错误 | 先 upsize 修 setup | slew 仍超 → delay 表不可信 |
+| 正确 | 先 buffer tree 修 slew → 0.28 | 再 STA → 再 sizing |
+
+与 [06 §2.4](./../../06-timing-driven-optimization.md#24-候选生成与优先级启发式) 调度表第一行一致。
+
+---
+
+## 案例 H — generated_clock（05 §9.1）
+
+**约束语义**（概念）：
+
+```tcl
+create_clock -name clk_ref -period 2.0 [get_ports clk_ref]
+create_generated_clock -name clk_cpu -source [get_pins pll/CLKIN] \
+  -divide_by 2 [get_pins pll/CLKOUT]
+```
+
+**内部 timing graph**：
+
+| 对象 | 边 | 说明 |
+|------|-----|------|
+| `clk_ref` | 主时钟 | period 2.0 |
+| `clk_cpu` | **派生** | period 4.0，边沿对齐 PLL 模型 |
+| `reg_cpu/CK` | 挂 `clk_cpu` | setup check 用 **4.0 ns** 周期 |
+
+**输出**：漏写 `generated_clock` → CPU 域按 2.0 ns 检查 → **虚假违例** 或错误闭合。
+
+---
+
 ## 阅读顺序
 
 ```text
-05 §1 编译流水线 → 案例 A → §3 案例 B → §4 案例 C → §6 案例 D → 06 章
+05 §1 编译流水线 → 案例 A → §3 B → §4 C/F → §7 G → §6 D → 06 章
 ```

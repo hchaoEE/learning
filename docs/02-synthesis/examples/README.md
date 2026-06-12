@@ -9,8 +9,12 @@
 | [mapping_walkthrough/](./mapping_walkthrough/) | [04 章](../04-technology-mapping.md) cover 选择 |
 | [sdc_walkthrough/](./sdc_walkthrough/) | [05 章](../05-constraints-sdc.md) timing graph |
 | [tdo_walkthrough/](./tdo_walkthrough/) | [06 章](../06-timing-driven-optimization.md) STA/transform |
+| [sta_walkthrough/](./sta_walkthrough/) | [07 章](../07-internal-sta-and-qor.md) 内部 STA / AT·RT |
 | [retiming_walkthrough/](./retiming_walkthrough/) | [06 §8](../06-timing-driven-optimization.md#8-retiming寄存器搬移--流水线重平衡) |
 | [power_walkthrough/](./power_walkthrough/) | [02 §9](../02-inference.md#9-时钟门控icg推断--asic-低功耗)、[09 章](../09-low-power-synthesis.md) |
+| [lec_walkthrough/](./lec_walkthrough/) | [10 章](../10-logical-equivalence-checking.md) miter / Cycle0 反例 |
+| [dft_walkthrough/](./dft_walkthrough/) | [12 章](../12-dft-and-scan.md) scan 模式 / 压缩 / lockup |
+| [hier_walkthrough/](./hier_walkthrough/) | [11 章](../11-hierarchical-block-synthesis.md) budget / 层次 LEC |
 
 阅读顺序建议：**mini_chain** → 各专题 walkthrough。
 

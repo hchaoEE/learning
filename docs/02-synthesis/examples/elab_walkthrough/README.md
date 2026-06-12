@@ -7,6 +7,7 @@
 | `preprocess_demo.sv` | §3 预处理 |
 | `child.sv` | §7 例化、§8 lowering |
 | `top.sv` | §7 generate 展开、§8 latch 案例 |
+| `unique_case.sv` | §8.4 unique case → 并行 MUX |
 
 ---
 

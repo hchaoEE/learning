@@ -1,5 +1,9 @@
 # 2.5 时序约束（SDC）— 综合器内部语义
 
+> **本章回答**：SDC 如何变成 timing graph 上的 clock/check/例外。  
+> **读完应能**：① 画 reg2reg setup 检查 ② 区分 false_path 与 clock_groups ③ 理解 MCMM 多 mode  
+> **先修**：setup/hold 概念 · **难度**：★★★★☆ · **walkthrough**：[sdc_walkthrough](./examples/sdc_walkthrough/)
+
 **SDC** 是 **约束语言**，综合器读入后编译成 **Timing Graph 上的语义**（时钟边、required/arrival 规则、例外剪枝），供 [04 映射](./04-technology-mapping.md) 的 cost 函数与 [06 细粒度优化](./06-timing-driven-optimization.md) 的 slack 驱动使用。
 
 > 本章讲 **SDC 在 Design DB 里变成什么**；语法仅作索引。  
@@ -8,6 +12,7 @@
 ---
 
 ## 1. 在流程中的位置
+> **一句话**：SDC 被编译成附在 timing graph 上的约束层，供 04/06/签核 STA 共用同一语义。
 
 ```text
   SDC 文本
@@ -47,6 +52,8 @@ FF/D 引脚  → setup/hold check 节点（required 规则生效）
 ---
 
 ## 2. SDC → Timing Graph：编译流水线
+> **一句话**：SDC → Timing Graph：编译流水线——本章核心机制点。
+> **类比**：像给地图标红绿灯与禁行线——不改路，只改能不能算路程。
 
 ```text
 1. Object Resolution：字符串 → DB 中的 port / pin / cell / clock 对象
@@ -127,6 +134,8 @@ setup check: reg_b/D required @ capture − setup_time
 ---
 
 ## 3. IO 延时：路径预算如何切分
+> **一句话**：IO 延时：路径预算如何切分——本章核心机制点。
+> **类比**：像给地图标红绿灯与禁行线——不改路，只改能不能算路程。
 
 IO 约束不直接「加延时单元」，而是 **从 period 中扣掉外部预算**，缩小 **芯片内组合逻辑可用 slack**。
 
@@ -156,6 +165,8 @@ period T
 ---
 
 ## 4. 路径例外：改图而非改 RTL
+> **一句话**：路径例外：改图而非改 RTL——本章核心机制点。
+> **类比**：像给地图标红绿灯与禁行线——不改路，只改能不能算路程。
 
 例外约束在内部 **修改 check 规则或剪枝**，不改变布尔功能。
 
@@ -167,6 +178,12 @@ period T
 
 典型：`async_rst → FF`、静态配置、已用同步器隔离的 CDC（配合设计）。
 
+### 输入/输出案例 4.1 — async 复位 false_path
+
+**输入**：`set_false_path -from [get_ports rst_n] -to [all_registers]`
+
+**输出**：`rst_n → FF/RN` 弧 **check 删除**；WNS 不再包含复位释放路径；06 **不**对复位锥插 buffer。见 [sdc_walkthrough 案例 C](./examples/sdc_walkthrough/README.md#案例-c--false_path0541)。
+
 ### 4.2 multicycle_path
 
 | 内部语义 | 效果 |
@@ -175,6 +192,12 @@ period T
 | hold：常需配对 `-hold` 调整 | 避免 hold 过检 |
 
 **与 retiming 交互**：multicycle 改变 **有效 period**，retime 引擎读同一 DB 属性（见 [06 §8.3](./06-timing-driven-optimization.md#83-内部控制属性)）。
+
+### 输入/输出案例 4.2 — setup=2 周期
+
+**输入**：慢路径 `launch clk_a` → `capture clk_b`，`set_multicycle_path -setup 2`
+
+**输出**：`required(D) += 1×T_clk_b`；该路径 slack 从 −0.40 → **+0.60**（示意）；**不得**与单周期路径混比 WNS。见 [sdc_walkthrough 案例 E](./examples/sdc_walkthrough/README.md#案例-e--multicycle0542)。
 
 ### 4.3 clock_groups：三种互斥的不同图语义
 
@@ -206,36 +229,47 @@ period T
 
 同步器本身的安全性靠 **电路结构**（双 FF）而非约束 — 约束只是告诉引擎「这里不要检查」。
 
+### 输入/输出案例 4.3 — CDC 漏标 vs 错标
+
+**输入**（RTL 见 [examples/sdc_walkthrough/cdc_sync.sv](./examples/sdc_walkthrough/cdc_sync.sv)）：`clk_a` 域 FF → 双 FF 同步器 → `clk_b` 域 FF。
+
+| 约束方案 | 内部（跨域路径 check） | WNS / 06 行为 |
+|----------|------------------------|---------------|
+| **无 clock_groups** | 公倍周期最紧沿对 setup 检查 | WNS = **−0.35**（虚假违例）；06 对同步器锥 upsize |
+| `clock_groups -asynchronous {clk_a clk_b}` | 跨域 check **删边** | 该路径不进 WNS；06 **不浪费**预算 |
+| 误把 **同频同步**路径也声明 async | 真数据路径 check 删除 | WNS 全绿 → **silicon 风险**（错标 failure mode） |
+
+**输出（判读）**：有同步器结构 ≠ 可省略约束；须用 `clock_groups` 或精确 `false_path` 覆盖 **CDC 段**，且不能把仍须检查的同步路径一并 async 掉。
+
+**初学者易错**：以为「做了双 FF 同步器」就不必写 SDC——同步器保证电路，**clock_groups 告诉 STA 别误报**；二者缺一不可。
+
 ### 4.4 max_delay / min_delay
 
 直接给 **组合路径** 或 **指定点集** 设 required/arrival 界；内部等价于 **自定义 check** 绑在路径端点。
 
-### 输入/输出案例 4.1 — 同一拓扑，不同例外
+### 输入/输出案例 4.4 — 组合路径 max_delay
 
-**拓扑**：`clk_a` 域 FF → 组合 → `clk_b` 域 FF
+**输入**：`set_max_delay 0.5 -from [get_ports a] -to [get_ports y]`（纯组合锥）
+
+**输出**：在 `y` 上绑定 **自定义 required=0.5**（非 FF setup）；违例时 06 修组合锥而非 FF check。
+
+### 输入/输出案例 4.5 — 同一拓扑，不同例外对比
+
+**拓扑**：`clk_a` 域 FF → 组合 → `clk_b` 域 FF（与 §4.3 CDC 案例同形，此处强调 **三种约束语义差异**）。
 
 | 约束语义 | 内部 | WNS 行为 |
 |----------|------|----------|
 | 无 | 跨域 setup 检查 | 常 **虚假违例** |
 | clock_groups asynchronous | 路径剪枝 | 不报该路径 |
-| multicycle setup=2 | capture required 后移 1 周期 | 允许慢路径 |
+| multicycle setup=2 | `required(D) += (2−1)×T_clk_b`（见案例 4.2） | 允许慢路径 |
 
-### 输入/输出案例 4.2 — multicycle setup
-
-**约束语义**：launch `clk_a` → capture `clk_b`，**setup=2 周期**（慢路径）。
-
-**内部**：
-
-```text
-required(D) ← capture_edge + (2-1)×T_clk_b − setup_time
-（相对单周期，组合预算 +≈1 个 clk_b 周期）
-```
-
-**04/06**：该路径 WNS 计算用 **放宽后的 required**；不应与单周期路径混比 WNS。
+**04/06**：multicycle 放宽后的路径 **不应与单周期路径混比 WNS**；CDC 须优先区分「删 check」与「延 period」（§4.3）。
 
 ---
 
 ## 5. 约束 → 04/06 的代价函数
+> **一句话**：约束 → 04/06 的代价函数——本章核心机制点。
+> **类比**：像给地图标红绿灯与禁行线——不改路，只改能不能算路程。
 
 ### 5.1 映射阶段（04）
 
@@ -248,11 +282,28 @@ cost(cut) = α·area(cover) + β·delay(cover, AT_from_fanin)
 **AT_from_fanin** 来自 **已标注时序图**（SDC clock + 上游 arrival）。  
 SDC 更紧 → 同一 AIG 结构倾向选 **更快但更贵** 的 cover。
 
+### 输入/输出案例 5.1 — period 收紧改变 cover
+
+**输入**：同一 AIG 锥，`period` 1.2 ns → **0.9 ns**（仅改 SDC）。
+
+**输出（04 cost）**：
+
+| period | 选中 cover | 关键路径 delay |
+|--------|------------|----------------|
+| 1.2 | 2× ND2（area） | 0.95 ns ✓ |
+| 0.9 | AOI21 + ND2（timing） | 0.82 ns ✓ |
+
 ### 5.2 细粒度阶段（06）
 
 06 读 **同一 timing graph** 上的 slack；transform 接受条件含 **所有绑定 corner** 的 check（见下节 MCMM）。
 
-### 输入/输出案例 5.1
+### 输入/输出案例 5.2 — 同一 SDC、06 消费 slack
+
+**输入**：mapped 网表不变；`report_timing` 显示 `reg_q/D` slack = −0.08。
+
+**输出**：06 队列选中 `u3` upsize；**不**重读 RTL/不重 04 全图 — 仅 transform + 增量 STA。
+
+### 输入/输出案例 5.3 — period 全局收紧
 
 **约束收紧**：period 1.0 → 0.8 ns，其余不变。
 
@@ -261,6 +312,7 @@ SDC 更紧 → 同一 AIG 结构倾向选 **更快但更贵** 的 cover。
 ---
 
 ## 6. MCMM：多 corner 在 DB 上的挂接
+> **一句话**：MCMM：多 corner 在 DB 上的挂接——本章核心机制点。
 
 **MCMM**（Multi-Corner Multi-Mode）在内部 **不是** 多份 SDC 文件简单叠加，而是：
 
@@ -302,6 +354,7 @@ Mode（functional / test / …）
 ---
 
 ## 7. 电气与优化约束（内部属性）
+> **一句话**：电气与优化约束（内部属性）——本章核心机制点。
 
 以下 SDC 语义在 DB 中变为 **pin/net 上的 limit 或 cell 属性**：
 
@@ -315,9 +368,29 @@ Mode（functional / test / …）
 
 Wire load / operating conditions 决定 **net arc 与 cell arc 查表 corner**，与 MCMM 表一致。
 
+### 输入/输出案例 7.1 — transition 违例先于 timing 修
+
+**输入**（mapped 网表片段）：`u_drv/Z` fanout=24，`set_max_transition 0.30` on `clk` 域。
+
+| 扫描阶段 | 违例标签 | slack 是否可信 |
+|----------|----------|----------------|
+| DRC 扫描 | `n_wide` slew = **0.42** > 0.30 | **否** — NLDM 在 limit 外外推 |
+| timing 扫描（若先跑） | setup WNS = −0.08 | 数字不可采信 |
+
+**输出（06 队列）**：
+
+```text
+1. 先修 n_wide：插 BUFFD2 树（fanout 1→4→6）→ slew 0.28 ✓
+2. 再重算 STA → setup WNS = −0.05（真实值）
+3. 再进 upsize 队列
+```
+
+与 [06 §2.4](./06-timing-driven-optimization.md#24-候选生成与优先级启发式)「DRC 先于 timing」调度一致；详见 [sdc_walkthrough 案例 F](./examples/sdc_walkthrough/README.md#案例-f--clock_groupscdc05-43)。
+
 ---
 
 ## 8. 对象解析与 Elaboration 名
+> **一句话**：对象解析与 Elaboration 名——本章核心机制点。
 
 SDC 字符串必须通过 **Object Resolution** 绑到 DB：
 
@@ -337,9 +410,8 @@ Elaboration 后 **generate 路径、uniquify 后缀** 必须与 SDC 一致（见
 
 ---
 
----
-
 ## 9. 生成时钟与 uncertainty（内部）
+> **一句话**：生成时钟与 uncertainty（内部）——本章核心机制点。
 
 ### 9.1 generated_clock：波形派生机制
 
@@ -387,7 +459,17 @@ hold:   required(D) = T_capture(同沿) + latency + t_hold + U_hold
 
 **06 视角**：uncertainty 越大 → 全 endpoint slack 越紧 → sizing 越激进、面积越大；这是「margin 换鲁棒性」的显式旋钮。
 
-### 输入/输出案例 9.1
+### 输入/输出案例 9.2 — uncertainty vs latency
+
+**输入**：同路径，`period=1.0`，`U_setup=0.05`，`network_latency=0.10`（launch/capture 同 clock）。
+
+| 只加 latency | 只加 uncertainty | 对同 clock reg2reg |
+|--------------|------------------|---------------------|
+| launch/capture **同移** | required **单边减** | latency **抵消**；uncertainty **收紧 slack** |
+
+**输出**：综合 signoff margin 主要靠 **uncertainty**；latency 在 ideal 下同域路径常 **不影响 slack**。
+
+### 输入/输出案例 9.1 — generated_clock 派生
 
 **派生时钟**：PLL 输出 `clk_cpu` from `clk_ref` / 2
 
@@ -395,7 +477,20 @@ hold:   required(D) = T_capture(同沿) + latency + t_hold + U_hold
 
 ---
 
+
+## 知识点清单（自检）
+
+- [ ] create_clock 挂到哪些 pin
+- [ ] setup check 在 FF/D
+- [ ] false_path vs clock_groups
+- [ ] multicycle 改 required 而非 RTL
+- [ ] MCMM functional vs test
+- [ ] sdc_walkthrough 案例 A–F
+
+---
+
 ## 10. 小结
+> **一句话**：小结——本章核心机制点。
 
 | 要点 | |
 |------|--|

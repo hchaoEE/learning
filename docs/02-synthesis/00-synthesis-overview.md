@@ -2,11 +2,16 @@
 
 ASIC **逻辑综合**：RTL → **可交付的门级网表**，并在 **时序、等价性、可测性、低功耗** 上签核。
 
+> **本章回答**：综合全流程在脑子里有一张地图。  
+> **读完应能**：① 画出 RTL→交付主链 ② 说出签核三角 ③ 按角色或 [7 天计划](#3-按角色怎么读) 选路径  
+> **先修**：无 · **难度**：★☆☆☆☆ · **walkthrough**：[mini_chain](./examples/mini_chain/README.md)
+
 > 完整章节地图：[README](./README.md) · 设计说明：[DESIGN.md](./DESIGN.md) · **方方面面索引**：[13 §9](./13-deliverables-and-handoff.md#9-综合方方面面索引)
 
 ---
 
 ## 1. 一张图：从 RTL 到交付
+> **一句话**：综合是一条从 RTL 到签核网表的主链，SDC 与 UPF/DFT/LEC 在旁路约束与验收。
 
 ```text
                          05 SDC ─────────────┐
@@ -31,7 +36,8 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 
 ---
 
-## 2. 全文章节（00–13）
+## 2. 全文章节（00–14）
+> **一句话**：全文章节（00–14）——本章核心机制点。
 
 | 章 | 文档 | 一句话 |
 |----|------|--------|
@@ -49,22 +55,40 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 | 11 | [11](./11-hierarchical-block-synthesis.md) | 分块 / 预算 |
 | 12 | [12](./12-dft-and-scan.md) | **DFT / 扫描** |
 | 13 | [13](./13-deliverables-and-handoff.md) | **交付 / 交接** |
+| 14 | [14](./14-academic-research-survey.md) | **学术界进展**（文献库 + 时间线，选读） |
 
 ---
 
 ## 3. 按角色怎么读
+> **一句话**：按角色怎么读——本章核心机制点。
 
 | 角色 | 建议路径 |
 |------|----------|
 | RTL 工程师 | 01 → 02 → 05 → 10 |
 | 综合工程师 | 00 → 01–08 → 10–13 |
+| 科研 / 读论文 | 03–06 → **14** |
 | 低功耗 | 05 → 09 → 13 |
 | 后端 | 13 → 05 → 06（知约束来源） |
 | 新人通读 | 路径 A：[README §4](./README.md#4-阅读路径) + **10 LEC** + **13 交付** |
 
+**先修与术语**：[README §1.1–§1.2](./README.md#11-先修知识初学者)（Verilog 可综合、setup/hold、SDC 最低要求 + 术语表）。
+
+### 3.1 初学者 7 天计划（概念扫盲）
+
+| 天 | 阅读 | 目标 |
+|----|------|------|
+| 1 | 本文 + [mini_chain](./examples/mini_chain/README.md) | 建立「RTL 变网表」直觉 |
+| 2 | [01](./01-rtl-parsing-and-elaboration.md) + elab walkthrough | 懂 GTECH / elaborate |
+| 3 | [05](./05-constraints-sdc.md) + sdc 案例 A–C | 懂 clock 与 setup |
+| 4 | [06](./06-timing-driven-optimization.md) §1–§4 + tdo | 懂违例怎么修 |
+| 5 | [07](./07-internal-sta-and-qor.md) + [sta_walkthrough](./examples/sta_walkthrough/) | 手推 AT/RT |
+| 6 | [10](./10-logical-equivalence-checking.md) + [13](./13-deliverables-and-handoff.md) | 签核与交付 |
+| 7 | [02](./02-inference.md)–[04](./04-technology-mapping.md) 选读 + 各章 **知识点清单** 自检 | 补主链 IR |
+
 ---
 
 ## 4. AIG 在哪一章？（短答）
+> **一句话**：AIG 在哪一章？（短答）——本章核心机制点。
 
 | 问题 | 答案 |
 |------|------|
@@ -75,6 +99,7 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 ---
 
 ## 5. 签核三角（内部视角）
+> **一句话**：签核三角（内部视角）——本章核心机制点。
 
 | 维度 | 章节 | 内部证什么 |
 |------|------|------------|
@@ -87,12 +112,40 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 ---
 
 ## 6. 交付物（短答）
+> **一句话**：交付物（短答）——本章核心机制点。
 
 网表、SDC、UPF（可选）、LEC 记录、内部量快照 — 详见 [13](./13-deliverables-and-handoff.md)。
 
 ---
 
-## 7. `compile` 内部 Pass 时间线（全景）
+## 7. 知识点总树（索引）
+> **一句话**：知识点总树（索引）——本章核心机制点。
+
+> 各章细节见该章 **知识点清单（自检）**；本树用于跳读。
+
+| 章 | 核心记忆点 | 清单 |
+|----|------------|------|
+| [01](./01-rtl-parsing-and-elaboration.md) | RTL→AST→GTECH；elaborate≠仿真 | 章末清单 |
+| [02](./02-inference.md) | `resource_type` 标签决定实现 | 章末清单 |
+| [03](./03-optimization.md) | AIG 粗优化在映射前 | 章末清单 |
+| [04](./04-technology-mapping.md) | cut/cover 绑定 .lib | 章末清单 |
+| [05](./05-constraints-sdc.md) | SDC 画 timing graph | 章末清单 |
+| [06](./06-timing-driven-optimization.md) | slack 驱动 transform | 章末清单 |
+| [07](./07-internal-sta-and-qor.md) | AT/RT→WNS/TNS | 章末清单 |
+| [08](./08-synthesis-reports.md) | 报告=内部量投影 | 章末清单 |
+| [09](./09-low-power-synthesis.md) | UPF→DB 功耗语义 | 章末清单 |
+| [10](./10-logical-equivalence-checking.md) | miter 无 diff | 章末清单 |
+| [11](./11-hierarchical-block-synthesis.md) | 块+budget+abstract | 章末清单 |
+| [12](./12-dft-and-scan.md) | scan 改 FF+test SDC | 章末清单 |
+| [13](./13-deliverables-and-handoff.md) | 网表+SDC+门控 | 章末清单 |
+| [14](./14-academic-research-survey.md) | 论文↔主链对照（选读） | 章末清单 |
+
+---
+
+## 8. `compile` 内部 Pass 时间线（全景）
+> **一句话**：`compile` 内部 Pass 时间线（全景）——本章核心机制点。
+
+> **一句话**：一次 compile 是 Design DB 上多次 pass 的流水线，不是单次「优化」。
 
 工业综合器把一次 `compile` 拆成 **可重复调度的 pass**；每步读写 **同一 Design DB**，只是 IR 形态在变。
 
@@ -118,7 +171,7 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
   签核前网表 → 10 LEC / 12 DFT
 ```
 
-### 7.1 Pass 级动作与可观测变化
+### 8.1 Pass 级动作与可观测变化
 
 | Pass | 输入 IR | 输出 IR | 内部动作（细） | 可观测变化 |
 |------|---------|---------|----------------|------------|
@@ -131,7 +184,7 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 | **TDO transform** | Mapped | Mapped | upsize/buffer/VT swap | buffer 占比 ↑；slack ↑ |
 | **Retiming** | Mapped | Mapped | FF 搬移/插入 | FF 数变、组合 depth 变 |
 
-### 输入/输出案例 7.1 — 单点 assign 走完全链
+### 输入/输出案例 8.1 — 单点 assign 走完全链
 
 **RTL**：`assign y = (a & b) | c;`（纯组合）
 
@@ -146,6 +199,16 @@ RTL ──► 01 Elab/GTECH ──► 02 推断 ──► 03 粗优化(AIG)
 → 逐步案例见 [03 §11](./03-optimization.md#11-案例集锦逐步理解)、[04 §11](./04-technology-mapping.md#11-案例集锦逐步理解-mapping)。
 
 **端到端串联**：[examples/mini_chain/README.md](./examples/mini_chain/README.md)（单模块走完全链 IR 快照）。
+
+---
+
+## 知识点清单（自检）
+
+- [ ] 能默画 §1 主链图（含 05 SDC 旁路）
+- [ ] 能说出签核三角（§5）三项
+- [ ] 知道 03 在 04 之前（§4）
+- [ ] 完成 [7 天计划](#31-初学者-7-天计划概念扫盲) 中至少 Day 1–3
+- [ ] 浏览 §7 总树并打开一章清单
 
 ---
 

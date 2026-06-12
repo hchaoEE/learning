@@ -8,6 +8,7 @@
 | `comb_const.sv` | 常量传播 | 子锥 **折叠** 为 0/1 |
 | `comb_mux.sv` | lowering | MUX → AND/OR AIG |
 | `reg_comb_boundary.sv` | 边界 | 加法器 **算术壳**，不进 AIG 拆解 |
+| `chain_and.sv` | balance | 六输入链 AND → 树状拉宽（03 §5.4） |
 
 ---
 
