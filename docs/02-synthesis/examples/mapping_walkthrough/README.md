@@ -4,9 +4,15 @@
 
 | 文件 | 主题 | 映射关注点 |
 |------|------|------------|
-| `map_and_or.sv` | `(a&b)\|c` | cut 选 2 级门 vs 单 AO21/OAI |
+| `map_and_or.sv` | `(a&b)\|c` / `!(a&b)\|c` | cut 选 2 级门 vs 单 **AOI21/OAI21** |
 | `map_mux.sv` | 2:1 MUX（2 位总线） | 库 MUX2 vs NAND 分解 |
 | `map_xor_chain.sv` | 3 输入 XOR 链 | cut 大小决定分级 vs 单门 |
+| `demo.genlib` | 手写门库（AOI21/OAI21） | 见 [04 §5.4](../../04-technology-mapping.md#54-手写-genlib--abc-map理解-cover-从哪来) |
+| `run_abc_map.sh` | ABC 映射实验脚本 | AIG 导出 + `abc` 对比 cover |
+
+## AOI/OAI
+
+阅读 [04 章 §5.3](../../04-technology-mapping.md#53-aoi--oai--oa为何工艺库爱用复杂门)：`!(a&b)|c` 用 **OAI21** 单单元 vs 多级 ND2/INV；极性匹配见 [04 §5.1b](../../04-technology-mapping.md#51b-aoioai-极性匹配与-pin-置换)。
 
 ---
 
